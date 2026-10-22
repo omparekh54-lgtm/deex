@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import csv
 import io
 import json
@@ -8,6 +9,7 @@ import secrets
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from html import escape
 from pathlib import Path
@@ -19,25 +21,40 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from app import angel
-from app.engine import Cancelled, DataGap, configuration, database, demo_data, technical
+from app.engine import Cancelled, DataGap, database
+from app import security
 from packages.pms.config import load_strategy_config
 from app.universe import UNIVERSE_SIZE
 
 ROOT=Path(__file__).resolve().parents[1]
-app=FastAPI(title='DEEX Research API',docs_url=None,redoc_url=None,openapi_url=None)
+@asynccontextmanager
+async def lifespan(app):
+    async def cleanup():
+        while True:
+            await asyncio.sleep(60)
+            with LOCK:security.purge(SESSIONS,JOBS,time.monotonic())
+    task=asyncio.create_task(cleanup())
+    try:yield
+    finally:
+        task.cancel()
+        try:await task
+        except asyncio.CancelledError:pass
+
+app=FastAPI(title='DEEX Research API',docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
 app.mount('/static',StaticFiles(directory=ROOT/'static'),name='static')
 SESSIONS={}; JOBS={}; LOCK=threading.RLock(); POOL=ThreadPoolExecutor(max_workers=1)
-TTL=7200
+TTL=security.ABSOLUTE_TTL
 
 def today(): return datetime.now(ZoneInfo('Asia/Kolkata')).date()
 
 class Login(BaseModel):
-    api_key: SecretStr
+    model_config=ConfigDict(extra="forbid")
+    api_key: SecretStr=Field(max_length=256)
     method: Literal['totp','jwt']='totp'
     client_code: str=Field(default='',max_length=40)
-    pin: SecretStr=SecretStr('')
-    totp: SecretStr=SecretStr('')
-    jwt: SecretStr=SecretStr('')
+    pin: SecretStr=Field(default=SecretStr(''),max_length=32)
+    totp: SecretStr=Field(default=SecretStr(''),max_length=6)
+    jwt: SecretStr=Field(default=SecretStr(''),max_length=8192)
 
 class Run(BaseModel):
     mode: Literal['TECHNICAL','FULL','BA','BAC','SETUP2']='TECHNICAL'
@@ -90,44 +107,51 @@ async def validation_error(request,exc):
 
 @app.middleware('http')
 async def safety(request:Request,call_next):
-    if request.headers.get('content-length','').isdigit() and int(request.headers['content-length'])>65536:
-        return JSONResponse({'detail':'Request is too large.'},status_code=413)
-    if request.method not in ('GET','HEAD','OPTIONS'):
-        origin=request.headers.get('origin')
-        if origin and origin.rstrip('/') != str(request.base_url).rstrip('/'):
-            return JSONResponse({'detail':'Cross-origin requests are disabled.'},status_code=403)
     now=time.monotonic()
+    is_mutation=request.method not in ('GET','HEAD','OPTIONS')
+    if not security.valid_origin(request):
+        return security.error('Request origin or host is not allowed.',403)
+    if security.production() and request.url.scheme!='https':
+        return security.error('HTTPS is required.',400)
+    if is_mutation and request.headers.get('sec-fetch-site') in ('cross-site','same-site'):
+        return security.error('Cross-site requests are disabled.',403)
     with LOCK:
-        for key in list(SESSIONS):
-            if SESSIONS[key]['expires']<now:
-                del SESSIONS[key]
-        for key in list(JOBS):
-            job=JOBS[key]
-            if now-job['created']>TTL and job['status'] not in ('QUEUED','RUNNING'):
-                del JOBS[key]
-        sid=request.cookies.get('deex_session')
-        new_session=sid not in SESSIONS
-        if new_session:
-            if len(SESSIONS)>=300:
-                return JSONResponse({'detail':'Session capacity reached. Try again later.'},status_code=503)
-            sid=secrets.token_urlsafe(32)
-            SESSIONS[sid]={'expires':now+TTL,'broker':None,'login_times':[],'last_demo':0}
-        else:
-            SESSIONS[sid]['expires']=now+TTL
+        security.purge(SESSIONS,JOBS,now)
+        sid=request.cookies.get(security.cookie_name())
+        creates_session=request.method=='GET' and request.url.path in ('/','/api/status')
+        if sid not in SESSIONS:
+            if request.url.path.startswith('/api/') and not creates_session:
+                return security.error('Session expired. Reload the page.',404 if request.method=='GET' else 401)
+            sid=None
+            if creates_session:
+                if len(SESSIONS)>=300:return security.error('Session capacity reached. Try again later.',503)
+                address=request.client.host if request.client else 'unknown'
+                if not security.LIMITER.allow('new_session',address,30,60):
+                    return security.error('Too many new sessions. Try again shortly.',429)
+                sid=secrets.token_urlsafe(32)
+                SESSIONS[sid]=security.new_session(now)
+                request.state.set_cookie=True
+        if sid:
+            session=SESSIONS[sid]
+            if is_mutation:
+                token=request.headers.get('x-csrf-token','')
+                if not token or not secrets.compare_digest(token,session['csrf']):
+                    return security.error('Session verification failed. Reload the page.',403)
+            session['expires']=min(now+security.IDLE_TTL,session['absolute_expires'])
         request.state.sid=sid
     response=await call_next(request)
-    response.headers.update({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
-        'Referrer-Policy':'no-referrer','X-Frame-Options':'DENY',
-        'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"})
-    if new_session:
-        response.set_cookie('deex_session',sid,httponly=True,secure=bool(os.getenv('RENDER')),samesite='strict',max_age=TTL)
+    if getattr(request.state,'set_cookie',False):
+        response.set_cookie(security.cookie_name(),request.state.sid,httponly=True,
+            secure=security.production(),samesite='strict',path='/',max_age=TTL)
     return response
+
+app.add_middleware(security.BoundedBodyMiddleware)
 
 @app.get('/')
 def index(): return FileResponse(ROOT/'static/index.html')
 
 @app.get('/health')
-def health(): return {'status':'ok','execution_enabled':False,'service':'deex','version':'1.1.0'}
+def health(): return {'status':'ok','execution_enabled':False,'service':'deex','version':'1.2.0'}
 
 @app.get('/api/status')
 def status(request:Request):
@@ -135,20 +159,21 @@ def status(request:Request):
     broker=session['broker']
     connected=bool(broker and broker['expires']>time.monotonic())
     return {'broker_connected':connected,'database_configured':bool(os.getenv('PMS_DATABASE_URL')),
-        'execution_enabled':False,'stock_count':UNIVERSE_SIZE,'strategy':'FULL_PMS_SETUP1','session_lifetime_minutes':120,
+        'execution_enabled':False,'stock_count':UNIVERSE_SIZE,'strategy':'FULL_PMS_SETUP1','session_lifetime_minutes':15,
+        'csrf_token':session['csrf'],'broker_credentials_retained':False,
         'strategy_version':load_strategy_config()['version']}
 
 @app.post('/api/connect')
 def connect(request:Request,body:Login):
     session=SESSIONS[request.state.sid]
-    now=time.monotonic()
+    address=request.client.host if request.client else 'unknown'
     with LOCK:
-        session['login_times']=[t for t in session['login_times'] if now-t<300]
-        if len(session['login_times'])>=5:
+        if (not security.LIMITER.allow('login_ip',address,5,300)
+            or not security.LIMITER.allow('login_account',body.client_code.strip().upper(),5,300)
+            or not security.LIMITER.allow('login_global','all',30,300)):
             raise HTTPException(429,'Too many login attempts. Wait five minutes.')
-        session['login_times'].append(now)
     key=body.api_key.get_secret_value().strip()
-    if not 5<=len(key)<=256: raise HTTPException(422,'Enter a valid SmartAPI key.')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{5,256}',key): raise HTTPException(422,'Enter a valid SmartAPI key.')
     try:
         if body.method=='totp':
             if not body.client_code or not body.pin.get_secret_value() or not re.fullmatch(r'\d{6}',body.totp.get_secret_value()):
@@ -156,22 +181,46 @@ def connect(request:Request,body:Login):
             token=angel.authenticate(key,body.client_code.strip(),body.pin.get_secret_value(),body.totp.get_secret_value())
         else:
             token=body.jwt.get_secret_value().strip().removeprefix('Bearer ')
-            if len(token)<30 or len(token)>8192: raise HTTPException(422,'Enter a valid JWT session token.')
+            if not re.fullmatch(r'[A-Za-z0-9_.-]{30,8192}',token): raise HTTPException(422,'Enter a valid JWT session token.')
             angel.candles(key,token,'99926000',today()-timedelta(days=12),today()-timedelta(days=1))
+        # The full PMS replay consumes the historical database. It does not
+        # need an API key/JWT after verification, so retain neither credential.
         with LOCK:
-            session['broker']={'key':key,'token':token,'expires':time.monotonic()+5400}
-        return {'connected':True,'message':'Angel One connected. Credentials are held in memory only.'}
+            if request.state.sid not in SESSIONS:
+                raise HTTPException(401,'Session expired during verification. Reload the page.')
+            old=request.state.sid
+            sid=secrets.token_urlsafe(32)
+            SESSIONS[sid]=SESSIONS.pop(old)
+            for job in JOBS.values():
+                if job['owner']==old:job['owner']=sid
+            request.state.sid=sid;request.state.set_cookie=True
+            session['broker']={'verified':True,'expires':time.monotonic()+security.VERIFICATION_TTL}
+            session['csrf']=secrets.token_urlsafe(32)
+        return {'connected':True,'csrf_token':session['csrf'],
+                'message':'Connection verified. API key, PIN, TOTP and JWT are not retained.'}
     except angel.BrokerError as e:
         raise HTTPException(400,str(e)) from None
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(502,'Broker verification could not complete. No credentials were retained.') from None
+    finally:
+        key=token=''
+        body.api_key=SecretStr('');body.pin=SecretStr('');body.totp=SecretStr('');body.jwt=SecretStr('')
 
 @app.post('/api/disconnect')
 def disconnect(request:Request):
     with LOCK:
-        SESSIONS[request.state.sid]['broker']=None
-        for job in JOBS.values():
-            if job['owner']==request.state.sid and job['status'] in ('RUNNING','QUEUED'):
+        old=request.state.sid
+        SESSIONS.pop(old,None)
+        for job_id,job in list(JOBS.items()):
+            if job['owner']==old:
                 job['cancel'].set()
-    return {'connected':False}
+                if job['status'] not in ('RUNNING','QUEUED'):del JOBS[job_id]
+        sid=secrets.token_urlsafe(32)
+        SESSIONS[sid]=security.new_session(time.monotonic())
+        request.state.sid=sid;request.state.set_cookie=True
+    return {'connected':False,'csrf_token':SESSIONS[sid]['csrf']}
 
 def owned(request,job_id):
     with LOCK:

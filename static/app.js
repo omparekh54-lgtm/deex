@@ -1,16 +1,18 @@
 'use strict';
 const $=id=>document.getElementById(id);
+let csrfToken='';
 let state={broker_connected:false,database_configured:false}, currentJob=null, report=null, pollTimer=null, resultView='trades';
 const money=new Intl.NumberFormat('en-IN',{maximumFractionDigits:0,style:'currency',currency:'INR'});
 const num=(n,d=2)=>n==null?'—':Number(n).toLocaleString('en-IN',{maximumFractionDigits:d});
 const pct=n=>n==null?'—':num(n)+'%';
 async function api(path,body){
- const response=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
- const data=await response.json(); if(!response.ok)throw new Error(typeof data.detail==='string'?data.detail:'Request failed. Please retry.');return data;
+ if(body!==undefined&&!csrfToken){const session=await api('/api/status');csrfToken=session.csrf_token;}
+ const response=await fetch(path,{method:body===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',redirect:'error',headers:body===undefined?{}:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:body===undefined?undefined:JSON.stringify(body)});
+ const data=await response.json(); if(data.csrf_token)csrfToken=data.csrf_token; if(!response.ok)throw new Error(typeof data.detail==='string'?data.detail:'Request failed. Please retry.');return data;
 }
 function message(id,text,error=false){$(id).textContent=text;$(id).classList.toggle('error',error);}
 function updateStatus(){
- $('connectionState').textContent=state.broker_connected?'Connected':'Not connected';$('connectionState').classList.toggle('connected',state.broker_connected);
+ $('connectionState').textContent=state.broker_connected?'Verified':'Not verified';$('connectionState').classList.toggle('connected',state.broker_connected);
  $('connectForm').hidden=state.broker_connected;$('disconnect').hidden=!state.broker_connected;modeNotice();
 }
 function modeNotice(){
@@ -22,11 +24,12 @@ document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener
 $('connectForm').addEventListener('submit',async event=>{
  event.preventDefault();$('connectButton').disabled=true;message('connectMessage','Connecting securely…');
  const body={api_key:$('apiKey').value,method:'totp',client_code:$('clientCode').value,pin:$('pin').value,totp:$('totp').value};
- try{await api('/api/connect',body);state.broker_connected=true;['apiKey','pin','totp'].forEach(id=>$(id).value='');message('connectMessage','Connected. Ready to fetch historical candles.');updateStatus();}
- catch(error){message('connectMessage',error.message,true);$('pin').value='';$('totp').value='';}
+ ['apiKey','pin','totp'].forEach(id=>$(id).value='');
+ try{await api('/api/connect',body);state.broker_connected=true;['apiKey','pin','totp'].forEach(id=>$(id).value='');message('connectMessage','Connection verified. Your credentials were discarded.');updateStatus();}
+ catch(error){message('connectMessage',error.message,true);$('apiKey').value='';$('pin').value='';$('totp').value='';}
  finally{Object.keys(body).forEach(k=>body[k]='');$('connectButton').disabled=false;}
 });
-$('disconnect').addEventListener('click',async()=>{try{await api('/api/disconnect',{});state.broker_connected=false;updateStatus();message('connectMessage','Disconnected. Session credentials cleared.');}catch(e){message('connectMessage',e.message,true);}});
+$('disconnect').addEventListener('click',async()=>{try{await api('/api/disconnect',{});state.broker_connected=false;updateStatus();report=null;currentJob=null;clearTimeout(pollTimer);$('reportPanel').hidden=true;$('progressPanel').hidden=true;$('emptyState').hidden=false;lockRun(false);message('connectMessage','Session cleared. Previous report links are invalid.');}catch(e){message('connectMessage',e.message,true);}});
 function lockRun(locked){$('runButton').disabled=locked;}
 function begin(job){
  currentJob=job.id;report=null;lockRun(true);$('emptyState').hidden=true;$('reportPanel').hidden=true;$('progressPanel').hidden=false;$('cancelButton').disabled=false;$('resultTag').textContent='In progress';message('runError','');$('progressBar').value=0;$('progressPercent').textContent='0%';$('progressMessage').textContent='Waiting for research worker';$('results').scrollIntoView({behavior:'smooth',block:'start'});poll();

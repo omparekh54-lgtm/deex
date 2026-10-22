@@ -1,0 +1,11 @@
+fastapi==0.160.0
+starlette==1.9.0
+uvicorn==0.54.0
+pydantic==2.14.1
+httpx==0.28.1
+pandas==2.3.3
+numpy==2.3.4
+sqlalchemy==2.0.44
+psycopg2-binary==2.9.11
+pyyaml==6.0.3
+python-dotenv==1.2.4

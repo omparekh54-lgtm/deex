@@ -4,7 +4,7 @@ import time
 from datetime import date
 import pytest
 from fastapi.testclient import TestClient
-from app import main, angel
+from app import main, angel, security
 from app.engine import Cancelled, DataGap, demo_data, technical, frame_for
 from app.main import app, Run
 
@@ -12,12 +12,14 @@ from app.main import app, Run
 def clear(monkeypatch):
     monkeypatch.delenv('PMS_DATABASE_URL',raising=False)
     with main.LOCK:
-        main.SESSIONS.clear();main.JOBS.clear()
+        main.SESSIONS.clear();main.JOBS.clear();security.LIMITER.reset()
     yield
 
 @pytest.fixture
 def client():
     with TestClient(app) as c:
+        session=c.get('/api/status').json()
+        c.headers['X-CSRF-Token']=session['csrf_token']
         yield c
 
 def wait(client,job_id):
@@ -31,8 +33,8 @@ def wait(client,job_id):
 def test_health_security_and_no_order_route(client):
     response=client.get('/health')
     assert response.json()['execution_enabled'] is False
-    assert 'HttpOnly' in response.headers['set-cookie']
-    assert response.headers['cache-control']=='no-store'
+    assert 'deex_session' in client.cookies
+    assert response.headers['cache-control'].startswith('no-store')
     assert client.post('/api/orders',json={}).status_code==404
     assert client.get('/docs').status_code==404
     assert "script-src 'self'" in response.headers['content-security-policy']
@@ -57,6 +59,7 @@ def test_mocked_login_and_disconnect_dont_export_secrets(client,monkeypatch):
     assert result.status_code==200
     assert 'super-private-token' not in result.text
     assert client.get('/api/status').json()['broker_connected']
+    client.headers['X-CSRF-Token']=result.json()['csrf_token']
     client.post('/api/disconnect',json={})
     assert not client.get('/api/status').json()['broker_connected']
 

@@ -399,7 +399,9 @@ def test_conflicting_corporate_actions_block(monkeypatch):
 def test_web_api_cannot_bypass_a(monkeypatch):
     from app.main import app
     monkeypatch.delenv("PMS_DATABASE_URL", raising=False)
-    result = TestClient(app).post("/api/runs", json={
+    client=TestClient(app)
+    token=client.get('/api/status').json()['csrf_token']
+    result = client.post("/api/runs", headers={'X-CSRF-Token':token},json={
         "start": "2022-01-03", "end": "2024-12-31"
     })
     assert result.status_code == 409

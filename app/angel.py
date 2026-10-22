@@ -13,12 +13,20 @@ _lock = threading.Lock()
 _last_request = 0.0
 _master = None
 _master_time = 0.0
+ALLOWED_PATHS=frozenset({
+    '/rest/auth/angelbroking/user/v1/loginByPassword',
+    '/rest/secure/angelbroking/historical/v1/getCandleData',
+})
 
 class BrokerError(ValueError):
     pass
 
 def call(path, payload, key, token='', *, retry=True):
     global _last_request
+    if path not in ALLOWED_PATHS:
+        raise BrokerError('This broker operation is not permitted.')
+    if any(not isinstance(v,str) or any(ord(c)<32 or ord(c)==127 for c in v) for v in (key,token)):
+        raise BrokerError('Invalid broker authentication input.')
     headers = {'X-PrivateKey': key, 'Authorization': 'Bearer '+token,
                'X-SourceID': 'WEB', 'X-UserType': 'USER',
                'X-ClientLocalIP': '127.0.0.1', 'X-ClientPublicIP': '127.0.0.1',
@@ -28,16 +36,16 @@ def call(path, payload, key, token='', *, retry=True):
             time.sleep(max(0, .6 - (time.monotonic() - _last_request)))
             _last_request = time.monotonic()
         try:
-            response = httpx.post(BASE+path, json=payload, headers=headers, timeout=35)
+            response = httpx.post(BASE+path, json=payload, headers=headers, timeout=35, verify=True, trust_env=False, follow_redirects=False)
             if response.status_code in (429, 502, 503, 504) and attempt < 2:
                 time.sleep(1 + attempt * 2)
                 continue
             if response.status_code != 200:
                 raise BrokerError('Angel One request failed. Check your session, API app permissions and broker availability.')
             data = response.json()
-        except (httpx.HTTPError, json.JSONDecodeError):
+        except (httpx.HTTPError, ValueError, TypeError):
             raise BrokerError('Could not reach Angel One. Retry after checking broker availability.') from None
-        if not data.get('status'):
+        if not isinstance(data,dict) or not data.get('status'):
             # Never echo remote messages or responses: they may contain secrets.
             raise BrokerError('Angel One rejected the request. Check the API key, client code, PIN, current TOTP or JWT session.')
         return data.get('data')
@@ -55,7 +63,7 @@ def master():
     global _master, _master_time
     if _master is None or time.monotonic() - _master_time > 21600:
         try:
-            with httpx.stream('GET', MASTER, timeout=60, follow_redirects=True) as response:
+            with httpx.stream('GET', MASTER, timeout=60, follow_redirects=False, verify=True, trust_env=False) as response:
                 response.raise_for_status()
                 content = bytearray()
                 for chunk in response.iter_bytes():
