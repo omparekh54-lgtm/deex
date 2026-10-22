@@ -1,0 +1,24 @@
+[
+  {
+    "symbol": "SUPREMEENG",
+    "company": "Supreme Engineering Limited",
+    "metadata_isin": "INE319Z01013",
+    "current_isin": "INE319Z01021",
+    "series": "BZ",
+    "metadata_sha256": "fad2a4f11a54ddf2c114b531d700c4b1bfb39ed88f5cafa0a6300544685725a7",
+    "reviewed_master_sha256": "64bc3997cc8e6d67f77fec2d04e4f74c45d7f7cb712ffd55c0885fb5a56722d8",
+    "reviewed_on": "2026-10-20",
+    "scope": "Current classification only; exact stale metadata plus live master identity, company and series verification. No historical or trading identity authorization."
+  },
+  {
+    "symbol": "TIRUPATIFL",
+    "company": "Tirupati Forge Limited",
+    "metadata_isin": "INE319Y01016",
+    "current_isin": "INE319Y01024",
+    "series": "BE",
+    "metadata_sha256": "5048e2241065266ac866421a90b4b8f19b168848fcb492a026c9421e7db223a9",
+    "reviewed_master_sha256": "64bc3997cc8e6d67f77fec2d04e4f74c45d7f7cb712ffd55c0885fb5a56722d8",
+    "reviewed_on": "2026-10-20",
+    "scope": "Current classification only; exact stale metadata plus live master identity, company and series verification. No historical or trading identity authorization."
+  }
+]

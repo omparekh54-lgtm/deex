@@ -1,0 +1,147 @@
+version: PMS_v1.2.0_policy_r1
+
+fundamental:
+  min_market_cap_cr: 1000
+  min_avg_traded_value_cr: 2
+  max_promoter_pledge_pct: 20
+  min_quarterly_sales_cr: 50
+  require_positive_pat: true
+  min_sales_yoy_pct: 15
+  min_operating_profit_yoy_pct: 20
+  min_pat_yoy_pct: 25
+  min_eps_yoy_pct: 20
+  min_positive_quarters_last_4: 3
+  min_ocf_to_pat: 0.7
+  max_result_age_days: 100
+  liquidity_sessions: 63
+  max_price_age_days: 7
+  max_shareholding_age_days: 200
+  max_cash_flow_age_days: 550
+  max_surveillance_age_days: 7
+  # Explicit research assumptions, not statistically validated thresholds.
+  # Any tuning creates a new policy revision and invalidates old decisions.
+  policy_version: FUNDAMENTAL_POLICY_R1
+  policy_status: PROVISIONAL_BACKTEST
+  leverage_limits:
+    default:
+      max_debt_to_equity: 1.0
+      min_interest_coverage: 3.0
+    sectors:
+      Information Technology:
+        max_debt_to_equity: 0.5
+        min_interest_coverage: 5.0
+      Fast Moving Consumer Goods:
+        max_debt_to_equity: 0.5
+        min_interest_coverage: 5.0
+      Healthcare:
+        max_debt_to_equity: 0.5
+        min_interest_coverage: 5.0
+      Construction Materials:
+        max_debt_to_equity: 1.5
+        min_interest_coverage: 3.0
+      Construction:
+        max_debt_to_equity: 1.5
+        min_interest_coverage: 3.0
+      Metals & Mining:
+        max_debt_to_equity: 1.5
+        min_interest_coverage: 3.0
+      Oil Gas & Consumable Fuels:
+        max_debt_to_equity: 1.5
+        min_interest_coverage: 3.0
+      Power:
+        max_debt_to_equity: 2.0
+        min_interest_coverage: 2.5
+      Telecommunication:
+        max_debt_to_equity: 2.0
+        min_interest_coverage: 2.5
+      Realty:
+        max_debt_to_equity: 1.5
+        min_interest_coverage: 2.5
+    sector_aliases:
+      IT: Information Technology
+      FMCG: Fast Moving Consumer Goods
+      Pharmaceuticals: Healthcare
+      Metals: Metals & Mining
+      Oil & Gas: Oil Gas & Consumable Fuels
+      Telecommunications: Telecommunication
+      Real Estate: Realty
+  cyclical_high_pe_threshold: 25.0
+  cyclical_valuation_penalty_points: 5.0
+  legacy_surveillance_verified: false
+  consistency_growth_metrics:
+    - sales
+    - pat
+
+technical:
+  implementation_version: MODULE_B_v1.1
+  max_price_age_days: 7
+  # Explicitly identify already-adjusted feeds before applying corporate actions.
+  # yfinance is intentionally unverified until its import settings are confirmed.
+  adjusted_price_sources: []
+  min_price: 30
+  min_avg_volume_20d: 100000
+  min_worst_day_volume_20d: 75000
+  min_avg_turnover_20d_cr: 1
+  max_avg_turnover_20d_cr: 500
+  min_adr_20d_pct: 3
+  max_distance_from_52w_high_pct: 50
+  min_history_days: 252
+  earnings_blackout_trading_days: 3
+  rally_min_pct: 15
+  rally_min_velocity_pct_per_day: 1
+  rally_max_days: 30
+  rally_min_volume_ratio: 1.5
+  entry_window_days: 3
+  setup2_reaction_volume_ratio: 2.0
+  setup2_qualification_sessions: 30
+  setup2_expiry_sessions: 60
+
+risk:
+  risk_per_trade_pct: 0.5
+  max_position_pct: 10
+  max_portfolio_heat_pct: 3.5
+  max_open_trades: 7
+  max_positions_per_sector: 2
+  raw_stop_buffer_pct: 0.5
+  max_stop_risk_pct: 5.5
+
+ranking:
+  implementation_version: MODULE_C_v1.1
+  # Explicit starting scoring normalizations; tune only through the research matrix.
+  velocity_full_score: 2
+  volume_ratio_full_score: 3
+  pullback_full_depth_atr: 1
+  stage3_bonus: 10
+  minimum_score: 60
+  rally_quality_points: 25
+  pullback_quality_points: 20
+  fundamental_strength_points: 20
+  relative_strength_points: 15
+  proximity_52w_high_points: 10
+  sector_strength_points: 10
+
+regime:
+  # Explicit resolution of the draft rules benchmark name. No substitute feed.
+  benchmark_code: NIFTYMIDSMALLCAP400
+  benchmark_name: Nifty MidSmallcap 400
+  implementation_version: MODULE_E_v1.1
+  breadth_min_turnover_cr: 1
+  healthy_capacity: 6
+  defensive_below: 35
+  weak_below: 50
+  neutral_below: 65
+  healthy_below: 80
+
+backtest:
+  initial_capital: 10000000
+  slippage_bps: 10
+  impact_bps: 5
+  same_day_stop_after_entry: true
+  brokerage_bps: 0
+  brokerage_flat_per_order: 0
+  gst_pct: 18
+  sebi_turnover_pct: 0.0001
+  delivery_stt_pct: 0.10
+  delivery_stamp_duty_pct: 0.015
+  nse_cash_transaction_charge_pct_before_2026_03_01: 0.00297
+  nse_cash_transaction_charge_pct_from_2026_03_01: 0.0030699
