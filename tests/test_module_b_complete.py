@@ -400,7 +400,7 @@ def test_web_api_cannot_bypass_a(monkeypatch):
     from app.main import app
     monkeypatch.delenv("PMS_DATABASE_URL", raising=False)
     result = TestClient(app).post("/api/runs", json={
-        "mode": "FULL", "symbols": ["ABC"], "start": "2022-01-03", "end": "2024-12-31"
+        "start": "2022-01-03", "end": "2024-12-31"
     })
     assert result.status_code == 409
     assert "historical dataset" in result.json()["detail"]

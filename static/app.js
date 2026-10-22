@@ -14,36 +14,29 @@ function updateStatus(){
  $('connectForm').hidden=state.broker_connected;$('disconnect').hidden=!state.broker_connected;modeNotice();
 }
 function modeNotice(){
- const full=$('mode').value!=='TECHNICAL', box=$('modeNotice');box.classList.toggle('blocked',full&&!state.database_configured);
- const strong=box.querySelector('strong'),p=box.querySelector('p');
- if(full){strong.textContent=state.database_configured?'Full PMS historical replay':'Historical PMS dataset required';p.textContent=state.database_configured?'Uses the configured point-in-time database. Coverage gates must pass before fresh A, B, C and E decisions can be replayed. Angel One candles are not substituted for missing database history.':'Angel One does not supply all historical fundamental and reference inputs. Configure PMS_DATABASE_URL in Render to run this variant. You can run a technical study with Angel One now.';}
- else{strong.textContent='Technical study';p.textContent='Runs rally-pullback signals and the shared trade engine. Full fundamentals, historical index exclusions, earnings blackout, sector allocation and market regime need the PMS dataset.';}
+ const box=$('modeNotice');box.classList.toggle('blocked',!state.database_configured);
+ box.querySelector('strong').textContent=state.database_configured?'Full PMS strategy · 100-stock scan':'Historical dataset connection required';
+ box.querySelector('p').textContent=state.database_configured?'The app selects 100 stocks from pre-start historical data and replays your full A + B + C + E strategy. All input coverage checks must pass.':'Your full PMS strategy needs historical fundamentals, prices and reference data. A run starts only when the complete dataset is available.';
 }
 document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.view').forEach(v=>v.hidden=v.id!==button.dataset.view);document.querySelectorAll('.nav').forEach(v=>v.classList.toggle('active',v===button));if(button.dataset.view==='lab'&&report)drawChart();}));
-$('authMethod').addEventListener('change',()=>{const jwt=$('authMethod').value==='jwt';$('totpFields').hidden=jwt;$('jwtField').hidden=!jwt;});
-$('mode').addEventListener('change',modeNotice);
 $('connectForm').addEventListener('submit',async event=>{
  event.preventDefault();$('connectButton').disabled=true;message('connectMessage','Connecting securely…');
- const body={api_key:$('apiKey').value,method:$('authMethod').value,client_code:$('clientCode').value,pin:$('pin').value,totp:$('totp').value,jwt:$('jwt').value};
- try{await api('/api/connect',body);state.broker_connected=true;['apiKey','pin','totp','jwt'].forEach(id=>$(id).value='');message('connectMessage','Connected. Ready to fetch historical candles.');updateStatus();}
+ const body={api_key:$('apiKey').value,method:'totp',client_code:$('clientCode').value,pin:$('pin').value,totp:$('totp').value};
+ try{await api('/api/connect',body);state.broker_connected=true;['apiKey','pin','totp'].forEach(id=>$(id).value='');message('connectMessage','Connected. Ready to fetch historical candles.');updateStatus();}
  catch(error){message('connectMessage',error.message,true);$('pin').value='';$('totp').value='';}
  finally{Object.keys(body).forEach(k=>body[k]='');$('connectButton').disabled=false;}
 });
 $('disconnect').addEventListener('click',async()=>{try{await api('/api/disconnect',{});state.broker_connected=false;updateStatus();message('connectMessage','Disconnected. Session credentials cleared.');}catch(e){message('connectMessage',e.message,true);}});
-function lockRun(locked){$('runButton').disabled=locked;$('demoButton').disabled=locked;}
+function lockRun(locked){$('runButton').disabled=locked;}
 function begin(job){
  currentJob=job.id;report=null;lockRun(true);$('emptyState').hidden=true;$('reportPanel').hidden=true;$('progressPanel').hidden=false;$('cancelButton').disabled=false;$('resultTag').textContent='In progress';message('runError','');$('progressBar').value=0;$('progressPercent').textContent='0%';$('progressMessage').textContent='Waiting for research worker';$('results').scrollIntoView({behavior:'smooth',block:'start'});poll();
 }
 $('runForm').addEventListener('submit',async event=>{
  event.preventDefault();message('runError','');
- const mode=$('mode').value;
- if(mode==='TECHNICAL'&&!state.broker_connected){message('runError','Connect Angel One in step 01, or explore the sample report below.',true);return;}
- if(mode!=='TECHNICAL'&&!state.database_configured){message('runError','Full PMS requires the historical dataset. See Data guide to configure PMS_DATABASE_URL.',true);return;}
- const symbols=$('symbols').value.split(/[\s,;]+/).map(s=>s.trim()).filter(Boolean);
- const body={mode,symbols,start:$('start').value,end:$('end').value,capital:Number($('capital').value),reentry:$('reentry').checked,always_armed:$('armed').checked,adr_min:Number($('adrMin').value),adr_window:Number($('adrWindow').value),adr_cap:$('adrCap').value?Number($('adrCap').value):null,slippage_bps:Number($('slippage').value),impact_bps:Number($('impact').value),brokerage_bps:Number($('brokerage').value)};
+ if(!state.database_configured){message('runError','The full PMS historical dataset is not connected yet. This is required to run your strategy across 100 stocks.',true);return;}
+ const body={start:$('start').value,end:$('end').value,capital:Number($('capital').value)};
  lockRun(true);try{begin(await api('/api/runs',body));}catch(e){message('runError',e.message,true);lockRun(false);}
 });
-$('demoButton').addEventListener('click',async()=>{lockRun(true);try{begin(await api('/api/demo',{}));}catch(e){message('runError',e.message,true);lockRun(false);}});
 $('cancelButton').addEventListener('click',async()=>{if(!currentJob)return;try{await api('/api/runs/'+currentJob+'/cancel',{});$('cancelButton').disabled=true;$('progressMessage').textContent='Cancelling after the current operation…';}catch(e){message('runError',e.message,true);}});
 async function poll(){
  try{
@@ -56,11 +49,11 @@ async function poll(){
 }
 function element(tag,text,className){const e=document.createElement(tag);if(text!=null)e.textContent=text;if(className)e.className=className;return e;}
 function showReport(){
- $('reportPanel').hidden=false;$('emptyState').hidden=true;$('resultTag').textContent=report.demo?'Synthetic demo':report.status==='NO_TRADES'?'No closed trades':'Exploratory result';
- $('reportNote').textContent=report.demo?'SYNTHETIC DEMO — Generated sample prices. These numbers are not evidence of real strategy performance.':report.mode==='TECHNICAL'?'TECHNICAL STUDY — Missing fundamental, index, earnings, corporate-action and sector inputs limit these results. Review Coverage & assumptions.':'FULL PMS REPLAY — Historical database input gates passed for this run. Performance and source correctness remain uncertified.';
+ $('reportPanel').hidden=false;$('emptyState').hidden=true;$('resultTag').textContent=report.status==='NO_TRADES'?'No closed trades':'100-stock PMS report';
+ $('reportNote').textContent='FULL PMS STRATEGY — 100 automatically selected stocks, one shared portfolio, original strategy rules. Historical results remain exploratory and uncertified.';
  const m=report.metrics;const cards=[['Total return',pct(m.total_return_pct),money.format(m.ending_equity)+' ending equity',m.total_return_pct],['Annualized return',pct(m.cagr_pct),'CAGR over selected dates',m.cagr_pct],['Max drawdown',pct(m.max_drawdown_pct),'Daily marked portfolio NAV',-m.max_drawdown_pct],['Win rate',pct(m.win_rate_pct),m.closed_trades+' completed cycles',null]];
  $('metrics').replaceChildren(...cards.map(([label,value,sub,sign])=>{const box=element('div',null,'metric');box.append(element('div',label,'metric-label'),element('div',value,'metric-value'+(sign==null?'':sign<0?' negative':' positive')),element('div',sub,'metric-sub'));return box;}));
- $('chartCaption').textContent=report.parameters.start+' — '+report.parameters.end+' · '+report.parameters.symbols.join(', ');
+ $('chartCaption').textContent=report.parameters.start+' — '+report.parameters.end+' · '+report.parameters.symbols.length+' automatically selected NSE stocks';
  ['csv','json','html'].forEach(kind=>$(kind+'Download').href='/api/runs/'+currentJob+'/download/'+kind);
  resultView='trades';document.querySelectorAll('.result-tab').forEach(b=>b.classList.toggle('active',b.dataset.result===resultView));renderTable();requestAnimationFrame(drawChart);
 }
@@ -76,6 +69,12 @@ function renderTable(){
  const ul=element('ul');(report.diagnostics.limitations||[]).forEach(v=>ul.append(element('li',v)));box.append(ul);
  if(report.diagnostics.rejections&&Object.keys(report.diagnostics.rejections).length){box.append(element('strong','Signal rejection counts'));box.append(element('p',Object.entries(report.diagnostics.rejections).map(([k,v])=>k.replaceAll('_',' ')+': '+v).join(' · ')));}
  box.append(element('p','Report SHA256: '+report.report_fingerprint,'fingerprint'));box.append(element('p','Dataset: '+(report.diagnostics.dataset_fingerprint||'Not recorded'),'fingerprint'));box.append(element('p','Engine source commit: '+report.engine_source_commit,'fingerprint'));area.append(box);return;
+ }
+ if(resultView==='universe'){
+ const universe=report.diagnostics.universe||{};
+ area.append(element('p',universe.selection||'Historical stock sample','diagnostics'));
+ area.append(table(['#','Stock','Sector','Prior average daily value'],(universe.stocks||[]).map((r,i)=>[i+1,r.instrument_id,r.sector,money.format(r.adtv)])));
+ return;
  }
  if(resultView==='drawdown'){area.append(table(['Session','Portfolio equity','Drawdown'],report.equity_curve.map(r=>[r.date,money.format(r.equity),pct(r.drawdown_pct)])));return;}
  const rows=resultView==='trades'?report.trades:report.fills;

@@ -17,9 +17,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from app import angel
 from app.engine import Cancelled, DataGap, configuration, database, demo_data, technical
+from packages.pms.config import load_strategy_config
+from app.universe import UNIVERSE_SIZE
 
 ROOT=Path(__file__).resolve().parents[1]
 app=FastAPI(title='DEEX Research API',docs_url=None,redoc_url=None,openapi_url=None)
@@ -39,7 +41,7 @@ class Login(BaseModel):
 
 class Run(BaseModel):
     mode: Literal['TECHNICAL','FULL','BA','BAC','SETUP2']='TECHNICAL'
-    symbols: list[str]=Field(min_length=1,max_length=50)
+    symbols: list[str]=Field(min_length=0,max_length=100)
     start: date
     end: date
     capital: float=Field(default=1000000,ge=10000,le=1e10,allow_inf_nan=False)
@@ -67,6 +69,19 @@ class Run(BaseModel):
         if self.adr_cap is not None and self.adr_cap<self.adr_min:
             raise ValueError('ADR cap must be at least the ADR minimum.')
         return self
+
+class RunRequest(BaseModel):
+    """Only the account and dates are user inputs. Strategy policy is immutable."""
+    model_config = ConfigDict(extra='forbid')
+    start: date
+    end: date
+    capital: float=Field(default=1000000,ge=10000,le=1e10,allow_inf_nan=False)
+    @model_validator(mode='after')
+    def dates(self):
+        Run(symbols=[],mode='FULL',start=self.start,end=self.end,capital=self.capital)
+        return self
+    def replay(self):
+        return Run(symbols=[],mode='FULL',start=self.start,end=self.end,capital=self.capital)
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request,exc):
@@ -112,7 +127,7 @@ async def safety(request:Request,call_next):
 def index(): return FileResponse(ROOT/'static/index.html')
 
 @app.get('/health')
-def health(): return {'status':'ok','execution_enabled':False,'service':'deex','version':'1.0.0'}
+def health(): return {'status':'ok','execution_enabled':False,'service':'deex','version':'1.1.0'}
 
 @app.get('/api/status')
 def status(request:Request):
@@ -120,8 +135,8 @@ def status(request:Request):
     broker=session['broker']
     connected=bool(broker and broker['expires']>time.monotonic())
     return {'broker_connected':connected,'database_configured':bool(os.getenv('PMS_DATABASE_URL')),
-        'execution_enabled':False,'max_symbols':50,'session_lifetime_minutes':120,
-        'strategy_version':configuration(Run(symbols=['EXAMPLE'],start=date(2023,1,1),end=date(2024,12,31)))['version']}
+        'execution_enabled':False,'stock_count':UNIVERSE_SIZE,'strategy':'FULL_PMS_SETUP1','session_lifetime_minutes':120,
+        'strategy_version':load_strategy_config()['version']}
 
 @app.post('/api/connect')
 def connect(request:Request,body:Login):
@@ -165,81 +180,47 @@ def owned(request,job_id):
             raise HTTPException(404,'Report not found or session expired.')
         return job
 
-def submit(request,body,*,demo=False):
+def submit(request,body):
     sid=request.state.sid
     with LOCK:
         session=SESSIONS[sid]
         if any(j['owner']==sid and j['status'] in ('QUEUED','RUNNING') for j in JOBS.values()):
             raise HTTPException(409,'A backtest is already running in this session.')
         if sum(j['status'] in ('QUEUED','RUNNING') for j in JOBS.values())>=3:
-            raise HTTPException(429,'The research queue is full. Try again shortly.')
+            raise HTTPException(429,'The backtest queue is full. Try again shortly.')
         if len(JOBS)>150: raise HTTPException(503,'Report capacity reached. Retry after older sessions expire.')
-        broker=session['broker']
-        if not demo and body.mode=='TECHNICAL' and (not broker or broker['expires']<=time.monotonic()):
-            raise HTTPException(401,'Connect your Angel One account first.')
-        if not demo and body.mode!='TECHNICAL' and not os.getenv('PMS_DATABASE_URL'):
-            raise HTTPException(409,'Full PMS needs the historical dataset. Set PMS_DATABASE_URL in the hosting environment. Angel One candles alone cannot supply Module A or market breadth.')
-        if demo and time.monotonic()-session['last_demo']<15:
-            raise HTTPException(429,'Wait fifteen seconds before another demo.')
-        if demo: session['last_demo']=time.monotonic()
+        if not os.getenv('PMS_DATABASE_URL'):
+            raise HTTPException(409,'The full PMS historical dataset is not connected. Connect the dataset and restore database availability before running the strategy across 100 stocks.')
         job_id=secrets.token_urlsafe(24)
-        job={'id':job_id,'owner':sid,'status':'QUEUED','progress':0,'message':'Waiting for research worker',
+        job={'id':job_id,'owner':sid,'status':'QUEUED','progress':0,'message':'Waiting for backtest worker',
              'created':time.monotonic(),'cancel':threading.Event(),'report':None,'error':None}
         JOBS[job_id]=job
-    POOL.submit(work,job,body,dict(broker) if broker and body.mode=='TECHNICAL' and not demo else None,demo)
-    return {'id':job_id,'status':'QUEUED'}
+    POOL.submit(work,job,body.replay())
+    return {'id':job_id,'status':'QUEUED','stock_count':UNIVERSE_SIZE}
 
 @app.post('/api/runs',status_code=202)
-def run(request:Request,body:Run): return submit(request,body)
+def run(request:Request,body:RunRequest): return submit(request,body)
 
-@app.post('/api/demo',status_code=202)
-def demo(request:Request):
-    body=Run(symbols=['DEMO_ALPHA','DEMO_BETA','DEMO_GAMMA'],start=date(2022,1,3),end=date(2023,12,29))
-    return submit(request,body,demo=True)
-
-def work(job,body,broker,demo):
+def work(job,body):
     began=time.monotonic()
     def check():
         if job['cancel'].is_set(): raise Cancelled()
-        if time.monotonic()-began>3600: raise DataGap('Run exceeded the one-hour limit. Reduce the symbol list or date range.')
+        if time.monotonic()-began>3600: raise DataGap('Run exceeded the one-hour limit. Use a shorter date range.')
     def progress(value,message):
         check()
         with LOCK: job.update(status='RUNNING',progress=value,message=message)
     try:
-        progress(3,'Preparing isolated research account')
-        if demo:
-            data,calendar=demo_data()
-            progress(40,'Synthetic data ready. This is a demonstration, not historical performance.')
-            report=technical(body,data,calendar,progress,check,demo=True)
-        elif body.mode=='TECHNICAL':
-            progress(5,'Loading NSE equity instrument tokens')
-            instruments=angel.master()
-            unknown=[s for s in body.symbols if s not in instruments]
-            if unknown: raise DataGap('Not found in current NSE EQ master: '+', '.join(unknown))
-            warmup=body.start-timedelta(days=730)
-            progress(8,'Downloading Nifty 50 session calendar')
-            calendar=sorted(angel.candles(broker['key'],broker['token'],'99926000',warmup,body.end,check))
-            if not calendar: raise DataGap('Angel One returned no Nifty 50 calendar candles.')
-            data={}
-            for n,symbol in enumerate(body.symbols):
-                check()
-                progress(10+int(30*n/len(body.symbols)),f'Downloading {symbol} ({n+1}/{len(body.symbols)})')
-                data[symbol]=angel.candles(broker['key'],broker['token'],instruments[symbol],warmup,body.end,check)
-                if not data[symbol]: raise DataGap(f'{symbol}: no historical candles returned.')
-            report=technical(body,data,calendar,progress,check)
-        else:
-            report=database(body,os.environ['PMS_DATABASE_URL'],progress,check)
+        progress(3,'Preparing your full PMS strategy across 100 stocks')
+        report=database(body,os.environ['PMS_DATABASE_URL'],progress,check)
         check()
         with LOCK: job.update(status=report['status'],progress=100,message='Report ready',report=report)
     except Cancelled:
         with LOCK: job.update(status='CANCELLED',message='Run cancelled. No broker orders were placed.')
-    except (DataGap,angel.BrokerError) as e:
-        with LOCK: job.update(status='BLOCKED',message='Input checks blocked this run',error=str(e)[:2500])
+    except DataGap as e:
+        with LOCK: job.update(status='BLOCKED',message='Historical data checks blocked this run',error=str(e)[:2500])
     except Exception:
-        # Never expose database URLs, broker responses or exception arguments.
-        with LOCK: job.update(status='FAILED',message='Backtest could not complete',error='The data source or engine returned an error. Check database availability/schema and data coverage, or reduce the date range. No performance report was produced.')
+        with LOCK: job.update(status='FAILED',message='Backtest could not complete',error='The historical data source or engine returned an error. Check database availability and coverage. No performance report was produced.')
     finally:
-        if broker: broker.clear()
         with LOCK: job['elapsed_seconds']=round(time.monotonic()-began,1)
 
 @app.get('/api/runs/{job_id}')

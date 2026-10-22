@@ -38,9 +38,9 @@ def test_health_security_and_no_order_route(client):
     assert "script-src 'self'" in response.headers['content-security-policy']
 
 def test_reject_cross_site_and_unauthenticated_study(client):
-    assert client.post('/api/demo',json={},headers={'Origin':'https://evil.example'}).status_code==403
-    result=client.post('/api/runs',json={'symbols':['DIXON'],'start':'2022-01-03','end':'2024-12-31'})
-    assert result.status_code==401
+    assert client.post('/api/runs',json={},headers={'Origin':'https://evil.example'}).status_code==403
+    result=client.post('/api/runs',json={'start':'2022-01-03','end':'2024-12-31'})
+    assert result.status_code==409
 
 def test_no_secret_reflected_by_validation_or_broker_errors(client,monkeypatch):
     secret='sensitive-password-001'
@@ -61,22 +61,45 @@ def test_mocked_login_and_disconnect_dont_export_secrets(client,monkeypatch):
     assert not client.get('/api/status').json()['broker_connected']
 
 def test_full_strategy_blocks_without_historical_database(client):
-    for mode in ['FULL','BA','BAC','SETUP2']:
-        result=client.post('/api/runs',json={'mode':mode,'symbols':['DIXON'],'start':'2022-01-03','end':'2024-12-31'})
-        assert result.status_code==409
+    result=client.post('/api/runs',json={'start':'2022-01-03','end':'2024-12-31'})
+    assert result.status_code==409 and '100 stocks' in result.text
     assert not main.JOBS
 
-def test_demo_downloads_complete_cycles_and_session_isolation(client):
-    result=client.post('/api/demo',json={});assert result.status_code==202
+def test_old_variants_symbols_and_tuning_cannot_be_submitted(client):
+    for field,value in [('mode','TECHNICAL'),('symbols',['DIXON']),('reentry',False),('adr_min',2.5),('always_armed',True)]:
+        payload={'start':'2022-01-03','end':'2024-12-31',field:value}
+        assert client.post('/api/runs',json=payload).status_code==422
+    assert client.post('/api/demo',json={}).status_code==404
+
+def test_full_report_downloads_and_session_isolation(client,monkeypatch):
+    from app.engine import report,configuration
+    from packages.pms.backtest import EventDrivenBacktester,MarketBar,Signal
+    monkeypatch.setenv('PMS_DATABASE_URL','postgresql://not-used-in-this-mocked-test')
+    def fake_database(request,url,progress,check):
+        assert request.mode=='FULL' and request.reentry and not request.always_armed
+        symbols=['S'+str(i).zfill(3) for i in range(100)]
+        request=request.model_copy(update={'symbols':symbols})
+        cfg=configuration(request)
+        days=[date(2022,1,d) for d in (3,4,5,6)]
+        bars=[]
+        for symbol in symbols:
+            for day,ohlc in zip(days,[(99,100,98,99),(101,104,100,103),(103,104,101,101),(101,103,99,100)]):
+                bars.append(MarketBar(symbol,day,*ohlc,102,102,99))
+        signals=[Signal(symbol,days[0],100,96) for symbol in symbols]
+        result=EventDrivenBacktester(cfg=cfg).run(bars,lambda day:signals if day==days[0] else [])
+        return report(request,cfg,result,{'source':'MOCKED_FULL_REPLAY_TEST','limitations':[],
+             'universe':{'stock_count':100,'stocks':[{'instrument_id':s,'sector':'Test','adtv':3e7} for s in symbols]}})
+    monkeypatch.setattr(main,'database',fake_database)
+    result=client.post('/api/runs',json={'start':'2022-01-03','end':'2022-01-06'})
+    assert result.status_code==202
     job_id=result.json()['id'];job=wait(client,job_id)
     assert job['status']=='COMPLETED'
-    report=job['report'];assert report['demo'] and report['acceptance']=='SYNTHETIC_DEMO'
-    assert report['metrics']['closed_trades']>0
-    assert report['metrics']['total_costs']>0
+    report=job['report'];assert report['mode']=='FULL' and not report['demo']
+    assert len(report['parameters']['symbols'])==100
+    assert report['metrics']['closed_trades']>0 and report['metrics']['total_costs']>0
     assert len(report['report_fingerprint'])==64
-    assert report['metrics']['ending_equity']==pytest.approx(report['equity_curve'][-1]['equity'])
-    assert all(r['exit_date']>=r['entry_date'] for r in report['trades'])
     assert report['metrics']['closed_trades']<len(report['fills'])
+    assert len({r['instrument_id'] for r in report['fills'] if r['side']=='BUY'})<=7
     for kind in ('json','csv','html'):
         response=client.get(f'/api/runs/{job_id}/download/{kind}')
         assert response.status_code==200 and 'attachment' in response.headers['content-disposition']

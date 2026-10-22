@@ -137,19 +137,31 @@ def technical(request, data, calendar, progress, check, *, demo=False):
 
 def database(request, url, progress, check):
     from sqlalchemy import create_engine
-    from packages.pms.replay_service import prepared_replay
+    from packages.pms.replay_service import PreparedReplay
+    from packages.pms.matrix_data import consistent_inputs, input_manifest
+    from packages.pms.backtest_matrix import Cell
+    from packages.pms.walk_forward import ReplayPeriod
+    from app.universe import automatic_universe
+    from sqlalchemy.exc import SQLAlchemyError
     from packages.pms.matrix_replay import ResearchDataGap
-    variant = ResearchVariant(request.mode, use_module_c=request.mode!='BA', use_module_e=request.mode in ('FULL','SETUP2'),
-                              setup_2=request.mode=='SETUP2',reentry=request.reentry)
-    case=Case('DEEX_'+request.mode,variant)
-    cfg=configuration(request)
+    variant = ResearchVariant('FULL',use_module_a=True,use_module_c=True,use_module_e=True,setup_2=False,reentry=True)
+    case=Case('DEEX_PMS_RULES_V1',variant)
+    cfg=load_strategy_config()
+    cfg['backtest']['initial_capital']=request.capital
+    period=ReplayPeriod('CUSTOM',request.start,request.end,'EXPLORATORY_HOLDOUT' if request.end>=date(2025,1,1) else 'DEVELOPMENT')
     if url.startswith('postgres://'): url=url.replace('postgres://','postgresql+psycopg2://',1)
     elif url.startswith('postgresql://'): url=url.replace('postgresql://','postgresql+psycopg2://',1)
     engine=create_engine(url,pool_pre_ping=True,pool_size=1,max_overflow=0,
         connect_args={'connect_timeout':15,'options':'-c default_transaction_read_only=on -c statement_timeout=120000'})
     try:
-        progress(15,'Checking point-in-time dataset and coverage gates')
-        with prepared_replay(engine,['NSE:'+s for s in request.symbols],request.start,request.end,[case]) as prepared:
+        progress(7,'Checking point-in-time dataset and coverage gates')
+        with consistent_inputs(engine) as snapshot:
+            check()
+            progress(10,'Selecting 100 stocks using pre-start historical liquidity')
+            symbols,universe=automatic_universe(snapshot,request.start)
+            request=request.model_copy(update={'symbols':[s.removeprefix('NSE:') for s in symbols]})
+            manifest=input_manifest(snapshot,[Cell(period,case)],symbols)
+            prepared=PreparedReplay(snapshot,manifest,period)
             check()
             progress(35,'Replaying fresh fundamental, technical, ranking and regime decisions')
             # Cooperative cancel and real session progress without changing strategy logic.
@@ -169,9 +181,11 @@ def database(request, url, progress, check):
             replay.on_close=on_close
             result,diag=replay.run()
             diag.update(execution_identity(cfg,case),dataset_fingerprint=prepared.manifest['fingerprint'],
-                        code_version=prepared.code_version,scope=prepared.manifest['scope'],acceptance='NOT_CERTIFIED')
+                        code_version=prepared.code_version,scope='AUTOMATIC_HISTORICAL_100',universe=universe,acceptance='NOT_CERTIFIED')
             diag.setdefault('limitations',[]).extend([
-                'Module D is parked. Setup 2 is research only.',
+                'Only the documented Setup 1 with A/B/C/E and re-entry is run. Module D is parked and Setup 2 is not run.',
+                universe['scope'],
+                'The automatic 100-stock sample is a fixed execution policy added for this app; the original rules did not specify a 100-stock selection algorithm.',
                 'Draft policy normalizations remain provisional. Benchmark resolved to Nifty MidSmallcap 400 in the inherited configuration.',
                 'Single-run inspection of 2025 onward is exploratory holdout use, not certified out-of-sample performance.',
                 'Full PMS runs use the configured historical database, not the Angel candle download. No database rows are changed.',
@@ -180,6 +194,11 @@ def database(request, url, progress, check):
             return report(request,cfg,result,diag)
     except ResearchDataGap as e:
         raise DataGap(str(e)) from None
+    except SQLAlchemyError as e:
+        message=str(e).lower()
+        if 'quota' in message or 'exceeded' in message or '402' in message:
+            raise DataGap('PMS database quota exceeded. Restore database access before running the 100-stock strategy.') from None
+        raise DataGap('The PMS historical database is unavailable or its schema is incomplete. Restore the dataset connection before running.') from None
     finally:
         engine.dispose()
 
