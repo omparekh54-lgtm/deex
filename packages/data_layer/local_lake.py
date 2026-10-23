@@ -86,7 +86,7 @@ class Lake:
         self.root = Path(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         (self.root / 'raw').mkdir(exist_ok=True, mode=0o700)
-        self.db = sqlite3.connect(self.root / 'catalog.sqlite', timeout=30)
+        self.db = sqlite3.connect((self.root / 'catalog.sqlite').as_uri() + '?mode=rwc', uri=True, timeout=30)
         self.db.row_factory = sqlite3.Row
         # Rollback journals also work on Windows and mounted workspaces where
         # SQLite WAL shared-memory semantics may not be supported.
@@ -133,6 +133,10 @@ class Lake:
           in_current_master integer not null default 0, security_kind text not null,
           metadata_asof text, primary key(symbol,isin,series));
         ''')
+        columns = {r[1] for r in self.db.execute('pragma table_info(documents)')}
+        if 'attempts' not in columns:
+            self.db.execute('alter table documents add column attempts integer not null default 0')
+        self._pending_receipts = None
 
     def close(self):
         self.db.close()
@@ -183,6 +187,8 @@ class Lake:
             tmp.replace(path)
         self.db.execute('insert or ignore into receipts values(?,?,?,?,?)',
                         (digest, doc.url, str(doc.observed_at), len(doc.body), path.name))
+        if self._pending_receipts is not None:
+            self._pending_receipts[digest] = (digest, doc.url, str(doc.observed_at), len(doc.body), path.name)
         return digest
 
     def _store_prices(self, rows, digest):
@@ -298,6 +304,7 @@ class Lake:
             # Older reports may lack one of the four required indices. Preserve
             # available rows, then report the absent index explicitly.
             from .cloud_sources import BENCHMARKS
+            BENCHMARKS = {**BENCHMARKS, 'CNX Nifty': 'NIFTY50', 'CNX 500': 'NIFTY500'}
             raw = rows_csv(doc.body, ['Index Name', 'Index Date', 'Open Index Value',
                                      'High Index Value', 'Low Index Value', 'Closing Index Value'])
             available = {r['Index Name'] for r in raw} & set(BENCHMARKS)
@@ -364,13 +371,26 @@ class Lake:
                 raise SourceError('discovery_schema_changed')
             for row in rows:
                 url = row.get('xbrl') or row.get('xbrlFile') or row.get('xbrl_file_link')
+                # Old exchange responses put a literal '-' in an absolute XBRL
+                # URL. The actual original statement is their linked HTML archive.
+                if dataset == 'financial_discovery' and (not url or str(url).rstrip('/').endswith('/-')):
+                    url = row.get('resultDetailedDataLink')
+                    if url:
+                        from urllib.parse import urlsplit
+                        import re
+                        parts = urlsplit(url)
+                        if (parts.hostname != 'nsearchives.nseindia.com' or not
+                                re.fullmatch(r'/archives/financial_results/financial_res_[A-Za-z0-9_&.%+-]+_[0-9]+\.html',parts.path)):
+                            raise SourceError('legacy_financial_link_invalid')
+                        row = {**row, '_deex_document_kind': 'legacy_html'}
                 if not url:
                     continue
                 allowed_url(url)
                 key = hashlib.sha256(dumps(row).encode()).hexdigest()
                 self.db.execute('insert or ignore into documents(dataset,key,url,payload) values(?,?,?,?)',
                                 ('financials' if dataset == 'financial_discovery' else 'shareholding', key, url, dumps(row)))
-        return 1, [digest]
+        rows = payload if isinstance(payload, list) else payload.get('data', []) if isinstance(payload, dict) else []
+        return len(rows), [digest]
 
     def _integrated_discovery(self, start, end, http):
         """Keep all bounded pages; verify the endpoint's count, dates and identity."""
@@ -399,7 +419,9 @@ class Lake:
                 r = parser._parse_row(row)
                 if not r or not r.external_id or not r.xbrl_uri or not start <= str(r.filed_at.date()) <= end:
                     raise SourceError('financial_identity_or_date_filter_failed')
-                key = f'{r.symbol}/{r.external_id}'
+                # NSE's id may identify an issuer, not a unique filing. Preserve
+                # separate periods/scopes/publications and actual original links.
+                key = dumps([r.symbol, r.period_end, r.filed_at, r.statement_scope, r.xbrl_uri])
                 if key in seen:
                     raise SourceError('financial_repeated_page')
                 seen.add(key)
@@ -413,7 +435,7 @@ class Lake:
                 raise SourceError('financial_pagination_truncated')
         raise SourceError('financial_page_budget_exceeded')
 
-    def documents(self, *, limit=100, http_factory=None):
+    def documents(self, *, limit=100, http_factory=None, retry=False):
         """Process original XBRL; errors are retained for review, never zero-filled."""
         if not 1 <= limit <= 10000:
             raise ValueError('limit must be 1..10000')
@@ -421,13 +443,31 @@ class Lake:
         from .cloud_sources import parse_shareholding
         from .exchange_financials import NSEIntegratedFinancialsProvider, filings_from_exchange_record
         provider = object.__new__(NSEIntegratedFinancialsProvider)
-        jobs = self.db.execute("select * from documents where status!='DONE' order by dataset,key limit ?", (limit,)).fetchall()
+        condition = "status in ('PENDING','FAILED') and attempts<3" if retry else "status='PENDING'"
+        jobs = self.db.execute('select * from documents where '+condition+' order by dataset,key limit ?', (limit,)).fetchall()
         results = []
         for job in jobs:
             try:
                 http = http_factory() if http_factory else OfficialHTTP(seconds=90)
-                doc = http.fetch(job['url'])
                 raw = json.loads(job['payload'])
+                legacy_html = raw.get('_deex_document_kind') == 'legacy_html'
+                doc = http.fetch(job['url'], financial_render=True) if legacy_html else http.fetch(job['url'])
+                # A parse failure must not discard the original source evidence.
+                with self.db:
+                    digest = self.archive(doc)
+                if legacy_html:
+                    with self.db:
+                        self.db.execute('insert or ignore into records values(?,?,?,?,?,?)',
+                            ('financials_html_staged', job['key'], str(parse_day(raw['toDate'])) if raw.get('toDate') else None, None,
+                             dumps({'source_record': raw, 'parser_status': 'LEGACY_TABLE_PARSER_REQUIRED'}), digest))
+                        self.db.execute("update documents set status='STAGED',error='legacy_table_parser_required',attempts=attempts+1 where dataset=? and key=?",
+                                        (job['dataset'], job['key']))
+                    results.append(dict(dataset=job['dataset'], status='STAGED', rows=1))
+                    continue
+                if raw.get('toDate') and not raw.get('quarterEndDate'):
+                    raw['quarterEndDate'] = raw['toDate']
+                if str(raw.get('consolidated', '')).strip().lower() in ('non-consolidated', 'non consolidated'):
+                    raw['consolidatedStandalone'] = 'standalone'
                 if b'<!DOCTYPE' in doc.body.upper() or b'<!ENTITY' in doc.body.upper():
                     raise SourceError('xbrl_entities_forbidden')
                 if job['dataset'] == 'financials':
@@ -448,14 +488,18 @@ class Lake:
                             raise SourceError('filing_timestamp_in_future')
                         self.db.execute('insert or ignore into records values(?,?,?,?,?,?)',
                                         (job['dataset'], job['key'] + '/' + str(i), effective, known, dumps(value), digest))
-                    self.db.execute('update documents set status=\'DONE\',error=NULL where dataset=? and key=?',
+                    self.db.execute('update documents set status=\'DONE\',error=NULL,attempts=attempts+1 where dataset=? and key=?',
                                     (job['dataset'], job['key']))
                 results.append(dict(dataset=job['dataset'], status='DONE', rows=len(pairs)))
-            except Exception:
+            except Exception as exc:
+                import re
+                code = str(exc) if isinstance(exc, SourceError) else 'document_parse_or_fetch_failed'
+                if not re.fullmatch('[a-z0-9_]+', code):
+                    code = 'document_parse_or_fetch_failed'
                 with self.db:
-                    self.db.execute("update documents set status='FAILED',error='document_parse_or_fetch_failed' where dataset=? and key=?",
-                                    (job['dataset'], job['key']))
-                results.append(dict(dataset=job['dataset'], status='FAILED', error='document_parse_or_fetch_failed'))
+                    self.db.execute("update documents set status='FAILED',error=?,attempts=attempts+1 where dataset=? and key=?",
+                                    (code, job['dataset'], job['key']))
+                results.append(dict(dataset=job['dataset'], status='FAILED', error=code))
         return results
 
     def fetch(self, *, datasets=('prices', 'indices'), limit=100, retry=False,
@@ -477,6 +521,7 @@ class Lake:
         result = []
         for job in jobs:
             key = (job['dataset'], job['start'], job['end'])
+            self._pending_receipts = {}
             try:
                 # Fresh transport budget per task: one failed task cannot poison later jobs.
                 http = http_factory() if http_factory else OfficialHTTP(seconds=90)
@@ -500,10 +545,28 @@ class Lake:
                 if not re.fullmatch('[a-z0-9_]+', code):
                     code = 'fetch_or_parse_failed'
                 status = 'MISSING' if code == 'source_http_404' else 'FAILED'
+                split = (key[0] == 'financial_discovery' and key[1] < key[2] and code in {
+                    'financial_pagination_changed', 'financial_repeated_page',
+                    'financial_pagination_truncated', 'financial_page_budget_exceeded'})
+                if split:
+                    status = 'SPLIT'
                 with self.db:
+                    # The job transaction may have rolled back normalized rows.
+                    # Retain already archived bytes and their source receipts.
+                    for receipt in self._pending_receipts.values():
+                        self.db.execute('insert or ignore into receipts values(?,?,?,?,?)', receipt)
+                        self.db.execute('insert or ignore into job_receipts values(?,?,?,?)', (*key, receipt[0]))
+                    if split:
+                        first, last = date.fromisoformat(key[1]), date.fromisoformat(key[2])
+                        middle = first + (last-first)//2
+                        for a, b in ((first, middle), (middle+timedelta(days=1), last)):
+                            self.db.execute('insert or ignore into jobs(dataset,start,end) values(?,?,?)',
+                                            (key[0], str(a), str(b)))
                     self.db.execute('update jobs set status=?,attempts=attempts+1,error=?,updated_at=? '
                                     'where dataset=? and start=? and end=?', (status, code, stamp(), *key))
                 result.append(dict(dataset=key[0], start=key[1], status=status, error=code))
+            finally:
+                self._pending_receipts = None
         return result
 
     def import_evidence(self, path):

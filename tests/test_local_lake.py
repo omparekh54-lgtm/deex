@@ -135,7 +135,9 @@ def test_repeated_financial_pages_cannot_complete(tmp_path):
             body = json.dumps({'totalCount': 2, 'page': params['page']-1, 'data': [row]}).encode()
             return doc(body)
     out = l.fetch(datasets=('financial_discovery',), start=start, end=end, http_factory=HTTP)
-    assert out[0]['status'] == 'FAILED'
+    assert out[0]['status'] == 'SPLIT'
     assert out[0]['error'] == 'financial_repeated_page'
     assert l.db.execute('select count(*) from documents').fetchone()[0] == 0
+    assert l.db.execute("select count(*) from jobs where dataset='financial_discovery' and status='PENDING' and start>='2026-09-01' and end<='2026-09-30'").fetchone()[0] == 2
+    assert l.db.execute('select count(*) from receipts').fetchone()[0] > 0
     l.close()

@@ -88,7 +88,8 @@ class OfficialHTTP:
     def fetch(self, url, *, financial_render=False):
         allowed_url(url)
         if financial_render and not (urllib.parse.urlsplit(url).hostname=='nsearchives.nseindia.com'
-                and re.fullmatch(r'/corporate/ixbrl/INTEGRATED_FILING_INDAS_[0-9]+_[0-9]+_iXBRL_WEB\.html',urllib.parse.urlsplit(url).path)):
+                and (re.fullmatch(r'/corporate/ixbrl/INTEGRATED_FILING_INDAS_[0-9]+_[0-9]+_iXBRL_WEB\.html',urllib.parse.urlsplit(url).path)
+                     or re.fullmatch(r'/archives/financial_results/financial_res_[A-Za-z0-9_&.%+-]+_[0-9]+\.html',urllib.parse.urlsplit(url).path))):
             raise SourceError('financial_render_url_not_allowed')
         for attempt in range(3):
             remaining = self.deadline - time.monotonic()

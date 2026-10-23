@@ -12,14 +12,19 @@ import time
 from .cloud_sources import Document, MAX_BYTES, OfficialHTTP, SourceError, allowed_url
 
 FINSTACK_COMMIT = '4b336cbdf3750834f67787c8eaf7d311e8b4e9d7'
+_configured_root = None
 
 
 def load_finstack(root):
+    global _configured_root
     try:
         import finstack as fs
     except ImportError:
         raise SourceError('finstack_not_installed') from None
-    fs.configure(FINSTACK_HOME=str(Path(root) / 'finstack_cache'), budgets={'nse': 1.0})
+    home = str(Path(root) / 'finstack_cache')
+    if _configured_root != home:
+        fs.configure(FINSTACK_HOME=home, budgets={'nse': 1.0})
+        _configured_root = home
     return fs
 
 
@@ -76,18 +81,21 @@ def stage_reference(lake, dataset):
         raise ValueError('Only shareholding/membership are bulk reference snapshots')
     if frame is None or frame.empty:
         raise SourceError('finstack_reference_empty')
-    body = frame.to_json(orient='table', date_format='iso', index=False).encode()
-    if len(body) > MAX_BYTES:
-        raise SourceError('finstack_reference_snapshot_too_large')
     source = 'https://github.com/omparekh54-lgtm/Finstack/blob/' + FINSTACK_COMMIT + '/src/finstack/reference_plus.py'
-    doc = Document(source, body, hashlib.sha256(body).hexdigest(), datetime.now(timezone.utc), len(body))
     from .local_lake import dumps
-    with lake.db:
-        digest = lake.archive(doc)
-        lake.db.execute('insert or ignore into records values(?,?,?,?,?,?)',
-                        ('finstack_' + dataset + '_staged', digest, None, None,
-                         dumps({'api': api, 'rows': len(frame), 'finstack_version': fs.__version__,
-                                'evidence_kind': 'NORMALIZED_THIRD_PARTY_RECONSTRUCTION',
-                                'coverage': 'UNVERIFIED', 'source_code_commit': FINSTACK_COMMIT}), digest))
+    for start in range(0, len(frame), 5000):
+        block = frame.iloc[start:start+5000]
+        body = block.to_json(orient='table', date_format='iso', index=False).encode()
+        if len(body) > MAX_BYTES:
+            raise SourceError('finstack_reference_snapshot_too_large')
+        doc = Document(source, body, hashlib.sha256(body).hexdigest(), datetime.now(timezone.utc), len(body))
+        with lake.db:
+            digest = lake.archive(doc)
+            lake.db.execute('insert or ignore into records values(?,?,?,?,?,?)',
+                            ('finstack_' + dataset + '_staged', digest, None, None,
+                             dumps({'api': api, 'rows': len(block), 'total_rows': len(frame), 'block_start': start,
+                                    'finstack_version': fs.__version__,
+                                    'evidence_kind': 'NORMALIZED_THIRD_PARTY_RECONSTRUCTION',
+                                    'coverage': 'UNVERIFIED', 'source_code_commit': FINSTACK_COMMIT}), digest))
     return {'dataset': dataset, 'rows': len(frame), 'status': 'STAGED_UNVERIFIED',
             'note': 'Compare with original exchange filings/releases before accepting historical inputs.'}

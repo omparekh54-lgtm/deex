@@ -12,6 +12,10 @@ is [config/company_universe_seed.csv](config/company_universe_seed.csv); it is a
 bootstrap list that expands with historical daily files, not a certified company
 count. Our pinned Finstack is the default collection transport.
 
+Run the complete queue with `python scripts/run_full_download.py --root local_data`.
+[Full download operation](docs/full-download-operation.md) explains unattended
+execution, hosted year shards, checkpoints, source repairs and merging downloads.
+
 A browser workspace that runs one fixed strategy: Setup 1 from `PMS_Rules_v1(3).docx`, with Modules A, B, C and E, the shared trade engine and re-entry after an eligible Leg 2 EMA exit. Module D remains parked. Setup 2, technical-only runs, comparison variants, tuning controls and synthetic demos are not exposed by the app.
 
 Open the deployed site, connect Angel One, choose dates and starting capital, and run the strategy. There is no stock-code entry field. The app automatically selects 100 historical NSE equities and returns one consolidated portfolio report. Scanning 100 stocks does not mean holding 100: the documented seven-position, two-per-sector, 3.5% heat and 10% position caps remain in force.

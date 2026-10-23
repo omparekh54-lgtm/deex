@@ -8,6 +8,8 @@ COPY config/company_universe_seed.csv config/company_universe_seed.csv
 COPY packages/data_layer packages/data_layer
 COPY packages/__init__.py packages/__init__.py
 COPY scripts/collect_local_data.py scripts/collect_local_data.py
+COPY scripts/run_full_download.py scripts/run_full_download.py
+COPY scripts/package_local_data.py scripts/package_local_data.py
 ENV DEEX_DATA_ROOT=/data
 ENTRYPOINT ["python", "scripts/collect_local_data.py"]
 CMD ["status"]

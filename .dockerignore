@@ -16,3 +16,7 @@ local_backups
 **/*.sqlite-wal
 **/*.sqlite-shm
 **/*.dump.tmp
+run_data
+downloaded_years
+deex-data-*.zip
+.collector-venv
