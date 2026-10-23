@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "price_warmup_years": 2,
+  "fundamental_warmup_years": 3,
+  "universe": "Union of historical NSE cash-market identities; never today's survivors or the app's 100-stock sample",
+  "etfs": ["NIFTYBEES", "JUNIORBEES", "MID150BEES", "BANKBEES", "PSUBNKBEES", "ITBEES", "PHARMABEES", "CPSEETF", "GOLDBEES", "SILVERBEES"],
+  "optional_cash_etf": "LIQUIDBEES",
+  "benchmarks": ["NIFTY50", "NIFTY500", "NIFTYMIDSMALLCAP400", "INDIAVIX"],
+  "datasets": {
+    "prices": "Raw daily OHLCV, rupee turnover, dated symbol/ISIN/series; preserve EQ/BE/BZ/SM/ST/SZ observations",
+    "indices": "Official daily benchmark and VIX levels; no ETF or realised-volatility substitution",
+    "calendar": "Official open/closed sessions including exceptional Saturday/Sunday sessions",
+    "identity": "Dated issuer IDs, security types, listing/delisting and symbol/ISIN changes; distinguish ETFs, equities, rights, REITs",
+    "actions": "Verified splits, bonuses, dividends, mergers/demergers; ex-date and original announcement timestamp",
+    "financials": "Original and revised quarterly/annual facts with filing timestamp, period identity, scope and XBRL evidence",
+    "shareholding": "Dated promoter holding, promoter pledge and outstanding equity shares, original XBRL evidence",
+    "sectors": "Historical sector/industry intervals",
+    "membership": "Historical Nifty 50/500 and regime-universe membership intervals",
+    "surveillance": "Historical ASM/GSM/trading-status intervals, explicit no-surveillance coverage",
+    "earnings": "Announced results/board-meeting dates and original announcement times; retain cancellations",
+    "costs": "Dated taxes, exchange/SEBI/GST/DP fees and explicit execution/slippage assumptions"
+  },
+  "strategies": {
+    "PMS_SETUP1": ["prices", "indices", "calendar", "identity", "actions", "financials", "shareholding", "sectors", "membership", "surveillance", "earnings", "costs"],
+    "S1": ["prices", "indices", "calendar", "identity", "actions", "costs"],
+    "S2": ["prices", "indices", "calendar", "identity", "actions", "costs"],
+    "S3": ["prices", "indices", "calendar", "identity", "actions", "costs"],
+    "S4": ["prices", "indices", "calendar", "identity", "actions", "costs"],
+    "S5": ["prices", "indices", "calendar", "identity", "actions", "costs"],
+    "S6": ["prices", "indices", "calendar", "identity", "actions", "costs"],
+    "S7": ["prices", "indices", "calendar", "identity", "actions", "costs"],
+    "S8": ["prices", "indices", "calendar", "identity", "actions", "costs"],
+    "S9": ["prices", "indices", "calendar", "identity", "actions", "costs"],
+    "S10": ["prices", "calendar", "identity", "actions", "costs"]
+  },
+  "notes": [
+    "S1-S9 describe the price-only source specification. Enabling full PMS filters adds financials, shareholding, sectors, membership, surveillance and earnings.",
+    "Indicators, breadth, relative strength and weekly bars are derived locally from dated inputs, not downloaded as independent facts.",
+    "Strategy performance claims in the supplied specification are unverified; this catalogue does not certify them.",
+    "Each ETF joins only after its actual listing and required lookback; never backfill a pre-launch ETF with an index."
+  ]
+}

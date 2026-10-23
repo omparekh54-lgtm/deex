@@ -10,3 +10,9 @@ node_modules
 test-results
 generated_images
 upload
+local_data
+local_backups
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+**/*.dump.tmp

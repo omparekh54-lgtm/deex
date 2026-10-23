@@ -1,0 +1,4 @@
+# Owner's Finstack source, pinned to the inspected commit (not a similarly named package).
+finstack @ git+https://github.com/omparekh54-lgtm/Finstack.git@4b336cbdf3750834f67787c8eaf7d311e8b4e9d7
+nse==5.1.0
+httpx[socks]==0.28.1

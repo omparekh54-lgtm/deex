@@ -1,5 +1,17 @@
 # DEEX PMS Backtest
 
+Local historical data acquisition is documented in
+[docs/local-data-pipeline.md](docs/local-data-pipeline.md). It adds a resumable
+SQLite/source-evidence lake for the 11 strategy specifications. The lake is a
+staging store; the current PMS replay still reads PostgreSQL, and S1–S10 replay
+engines are not implemented by this collection change.
+
+The [ten-year Finstack plan](docs/ten-year-finstack-plan.md) defines the historical
+universe, required fields and collection order. The versioned candidate register
+is [config/company_universe_seed.csv](config/company_universe_seed.csv); it is a
+bootstrap list that expands with historical daily files, not a certified company
+count. Our pinned Finstack is the default collection transport.
+
 A browser workspace that runs one fixed strategy: Setup 1 from `PMS_Rules_v1(3).docx`, with Modules A, B, C and E, the shared trade engine and re-entry after an eligible Leg 2 EMA exit. Module D remains parked. Setup 2, technical-only runs, comparison variants, tuning controls and synthetic demos are not exposed by the app.
 
 Open the deployed site, connect Angel One, choose dates and starting capital, and run the strategy. There is no stock-code entry field. The app automatically selects 100 historical NSE equities and returns one consolidated portfolio report. Scanning 100 stocks does not mean holding 100: the documented seven-position, two-per-sector, 3.5% heat and 10% position caps remain in force.

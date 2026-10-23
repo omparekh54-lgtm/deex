@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "scope": "All historical NSE cash equity candidates plus the ten specified S10 ETFs; security type and issuer mapping must be audited",
+  "per_security": {
+    "identity": ["issuer_id", "security_id", "dated_symbol", "dated_isin", "name", "security_type", "series", "listing_date", "delisting_date", "effective_from", "effective_to", "source", "known_at"],
+    "prices": ["trade_date", "open", "high", "low", "close", "volume", "turnover_inr", "series", "isin", "source_receipt"],
+    "financials": ["period_start", "period_end", "filing_kind", "statement_scope", "filed_at", "revision", "sales", "operating_profit", "pat", "diluted_eps", "pbt", "other_income", "exceptional_items", "operating_cash_flow", "debt", "equity", "interest_expense", "original_xbrl_receipt"],
+    "shareholding": ["period_end", "filed_at", "revision", "promoter_holding_pct", "promoter_pledge_pct_of_promoter", "shares_outstanding", "original_xbrl_receipt"],
+    "actions": ["action_type", "ex_date", "record_date", "announced_at", "ratio_from", "ratio_to", "cash_dividend", "predecessor_security", "successor_security", "original_source_receipt"],
+    "sectors": ["sector", "industry", "effective_from", "effective_to", "known_at", "source_receipt"],
+    "membership": ["index_code", "effective_from", "effective_to", "announcement_time", "source_receipt"],
+    "surveillance": ["ASM_GSM_or_other_measure", "stage", "series_restriction", "suspension_status", "effective_from", "effective_to", "announcement_time", "source_receipt"],
+    "earnings": ["event_date", "announcement_time", "notice_type", "original_notice_id", "cancellation_or_reschedule", "source_receipt"]
+  },
+  "shared_once": {
+    "calendar": ["session_date", "open_or_closed", "session_times", "special_session", "source_receipt"],
+    "indices": ["NIFTY50", "NIFTY500", "NIFTYMIDSMALLCAP400", "INDIAVIX"],
+    "costs": ["effective_from", "effective_to", "instrument_type", "buy_sell_STT", "stamp_duty", "exchange_fee", "SEBI_fee", "GST", "DP_charge", "brokerage", "slippage_policy"]
+  },
+  "derived_locally": ["split_bonus_adjusted_signal_series", "raw_execution_series", "SMA_EMA", "ATR_ADR", "RSI2", "52_week_high_low", "rolling_traded_value", "RS_percentiles", "weekly_bars", "breadth", "market_regime", "filing_time_market_cap", "quarterly_growth", "TTM_metrics"],
+  "rules": [
+    "Collect once and share across strategies; do not download eleven copies.",
+    "No fabricated pre-IPO prices, pre-launch ETFs, missing financials or surveillance clearances.",
+    "A company may have multiple security identities; identity count is not company count.",
+    "Preserve raw observations and source vintages; never replace a filing with its latest revised value for earlier dates."
+  ]
+}

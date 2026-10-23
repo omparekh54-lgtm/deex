@@ -1,0 +1,4 @@
+# Extra parser used by the inherited financial XBRL adapter.
+# Price/index acquisition and SQLite storage use the standard library.
+beautifulsoup4==4.13.5
+httpx==0.28.1

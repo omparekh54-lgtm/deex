@@ -1,0 +1,18 @@
+services:
+  collector:
+    build:
+      context: .
+      dockerfile: Dockerfile.data
+    environment:
+      DEEX_DATA_ROOT: /data
+    volumes:
+      - ./local_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    mem_limit: 1g
+    cpus: 1
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

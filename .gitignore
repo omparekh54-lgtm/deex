@@ -7,3 +7,10 @@ __pycache__/
 .venv/
 node_modules/
 test-results/
+local_data/
+local_backups/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.dump
+snapshot/*.tmp

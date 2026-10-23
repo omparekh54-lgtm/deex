@@ -1,0 +1,13 @@
+FROM python:3.12-slim
+WORKDIR /collector
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY requirements-data.txt requirements-finstack.txt ./
+RUN pip install --no-cache-dir -r requirements-data.txt -r requirements-finstack.txt
+COPY config/data_requirements.json config/data_requirements.json
+COPY config/company_universe_seed.csv config/company_universe_seed.csv
+COPY packages/data_layer packages/data_layer
+COPY packages/__init__.py packages/__init__.py
+COPY scripts/collect_local_data.py scripts/collect_local_data.py
+ENV DEEX_DATA_ROOT=/data
+ENTRYPOINT ["python", "scripts/collect_local_data.py"]
+CMD ["status"]

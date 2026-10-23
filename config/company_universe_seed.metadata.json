@@ -1,0 +1,19 @@
+{
+  "candidate_identity_series_rows": 4231,
+  "unique_isins": 4001,
+  "historical_only_rows": 1618,
+  "known_etf_symbols": 10,
+  "exact_company_count": null,
+  "status": "EXPANDING_UNIVERSE_NOT_A_CERTIFIED_COMPANY_COUNT",
+  "generated_at": "2026-10-23T19:06:01.665641+00:00",
+  "source": "Current official NSE EQUITY_L through Finstack, plus already-downloaded official historical bhavcopies",
+  "finstack_commit": "4b336cbdf3750834f67787c8eaf7d311e8b4e9d7",
+  "observed_price_sessions": [
+    "2016-10-24",
+    "2016-10-25",
+    "2026-10-23"
+  ],
+  "seed_sha256": "1031e0fc92e2f95cd4b8f094107afdff21a1a22442499c996f01c33a73d6b6cb",
+  "historical_union_complete": false,
+  "note": "Candidate hints only; seed import does not certify local price coverage, security type, or current membership."
+}
