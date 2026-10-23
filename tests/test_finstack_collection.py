@@ -54,3 +54,19 @@ def test_company_register_preserves_historical_absent_names(tmp_path):
     fresh.close()
     assert lake.verify()['ok']
     lake.close()
+
+
+def test_large_reference_frame_is_checkpointed_in_bounded_blocks(tmp_path, monkeypatch):
+    import pandas as pd
+    from packages.data_layer.finstack_collection import stage_reference
+    frame=pd.DataFrame({'ticker':['EXAMPLE']*10001, 'row_id':range(10001)})
+    fs=SimpleNamespace(nse_shareholding_history=lambda:frame,__version__='0.8.0')
+    monkeypatch.setattr('packages.data_layer.finstack_collection.load_finstack',lambda root:fs)
+    lake=Lake(tmp_path/'lake')
+    result=stage_reference(lake,'shareholding')
+    assert result['rows']==10001 and result['status']=='STAGED_UNVERIFIED'
+    import json
+    chunks=[json.loads(r[0]) for r in lake.db.execute("select payload from records where dataset='finstack_shareholding_staged'")]
+    assert len(chunks)==3 and sum(r['rows'] for r in chunks)==10001
+    assert lake.verify()['ok']
+    lake.close()

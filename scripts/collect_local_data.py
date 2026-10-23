@@ -32,6 +32,7 @@ def main(argv=None):
     docs = sub.add_parser('documents', help='Download/parse queued financial and shareholding XBRL')
     docs.add_argument('--limit', type=int, default=100)
     docs.add_argument('--provider', choices=['finstack', 'official'], default='finstack')
+    docs.add_argument('--retry', action='store_true')
     master = sub.add_parser('universe', help='Build/expand the all-company target register')
     master.add_argument('--refresh-master', action='store_true', help='Fetch current NSE metadata through Finstack')
     master.add_argument('--out', type=Path, help='Export the candidate identities and required datasets as CSV')
@@ -64,6 +65,7 @@ def main(argv=None):
         elif args.command == 'documents':
             from packages.data_layer.finstack_collection import FinstackHTTP
             output = lake.documents(limit=args.limit,
+                                    retry=args.retry,
                                     http_factory=(lambda: FinstackHTTP(lake.root)) if args.provider == 'finstack' else None)
             print(json.dumps(output, indent=2, default=str))
             return 2 if any(r['status'] == 'FAILED' for r in output) else 0
