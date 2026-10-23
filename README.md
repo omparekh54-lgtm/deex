@@ -47,6 +47,31 @@ Reports remain exploratory and uncertified. Draft policies, intraday ordering as
 
 One bounded research worker allows three queued/running jobs globally and one per session. Each run uses 100 symbols, at most ten years and a one-hour cooperative timeout. Free Render instances may sleep or restart; sessions, jobs and reports do not survive restart. Download reports before leaving. This app does not claim durable unattended campaign execution.
 
+## Strategy library (S1-S10)
+
+Alongside the fixed PMS Setup 1, the Research lab has a **Strategy** dropdown. "PMS Setup 1 (A + B + C + E)" stays the default and runs exactly as described above, through the unchanged `/api/runs` endpoint. The other options are ten price-only strategies from the DEEX 10-strategy specification:
+
+| ID | Strategy | Audit verdict |
+| --- | --- | --- |
+| S1 | Momentum Rotation 20 | Ready for forward paper testing |
+| S2 | 52-Week-High Base Breakout | Reject in current form |
+| S3 | Volatility Contraction (VCP) | Research candidate |
+| S4 | Episodic Pivot (Gap-and-Go) | Reject in current form |
+| S5 | Leader Pullback to 50-DMA | Reject in current form |
+| S6 | Low-Volatility Trend Rotation | Insufficient evidence |
+| S7 | Donchian 55/20 on RS Leaders | Research candidate |
+| S8 | Weekly Stage-2 Breakout | Reject in current form |
+| S9 | Momentum-Leader Dip (RSI-2) | Insufficient evidence |
+| S10 | ETF Dual-Momentum Allocation | Reject in current form |
+
+Verdicts come from the independent audit (frozen-rule holdout 2011-2021, stress tests). They are shown in the dropdown and in every report so a selectable strategy is not mistaken for an endorsed one.
+
+- **Code:** `packages/strategies/` (data loader, matrices and regime dial, trade engines, signals, catalog, runner). It does not import or modify `packages/pms`. The engines are a line-for-line port of the audited backtest code; on the same data, all ten reproduce the audited equity curves exactly.
+- **API:** `GET /api/strategies` lists the choices; `POST /api/strategy-runs` takes `strategy`, `start`, `end` and `capital` (dates from 2011, at most ten years). Jobs share the existing queue, polling, session isolation and JSON / CSV / HTML downloads.
+- **Data:** NSE cash-market bhavcopies, including delisted stocks, with splits and bonuses inferred from opening gaps. Files come from `DEEX_BHAVCOPY_DIR` (a local copy with `legacy/` and `udiff/` folders), else a download cache (`DEEX_BHAVCOPY_CACHE`, default `/tmp/deex_bhavcopy`), else the public mirror of NSE's archive, else NSE itself. No broker connection or PMS database is needed. The first run downloads about 250 files per year of history and can take several minutes; the free Render disk is wiped on restart.
+- **Resources:** a five-year run needs roughly 1-2 GB of memory. The free 512 MB Render instance is not enough for library runs; use a larger instance or run `python scripts/run_strategy.py S1 2022-01-03 2024-12-31` locally.
+- **Limits:** no fundamentals (Module A), sector caps or historical surveillance lists; no dividends or taxes; 0.15% assumed slippage per side. Reports are exploratory and uncertified.
+
 ## Provenance and validation
 
 The strategy modules, base configuration and retained command files originated from `design_experience` commit `55495ec7bc1ea2e18a80fedb22158c0b0cf56ce2`. The fixed web contract and automatic universe adapter are new. Legacy standalone candle/demo helpers remain internal for regression tests and cannot be invoked through the public app.
