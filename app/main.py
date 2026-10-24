@@ -307,3 +307,71 @@ def download(request:Request,job_id:str,kind:Literal['json','csv','html']):
         sections+=''.join('<tr>'+''.join('<td>'+escape(str(row.get(k,'')))+'</td>' for k in fields)+'</tr>' for row in rows)+'</table>'
     content='<!doctype html><html><meta charset="utf-8"><title>DEEX Backtest Report</title><style>body{font:14px system-ui;max-width:1000px;margin:40px auto;color:#182438}h1{font-size:30px}table{border-collapse:collapse;width:100%;margin:15px 0}td,th{border:1px solid #dae1e8;padding:8px;text-align:left}th{background:#edf2f6}li{margin:8px 0}@media print{body{margin:15mm}tr{break-inside:avoid}}</style><h1>DEEX PMS Backtest Report</h1><p>'+escape(report['mode_label'])+' | '+escape(report['acceptance'])+'</p><p>'+escape(str(report['parameters']))+'</p>'+sections+'<h2>Reproducibility</h2><p>Report SHA256 '+escape(report['report_fingerprint'])+'</p><p>Engine source '+escape(report['engine_source_commit'])+'</p><p>Download JSON for configuration, daily NAV, events, data identity and full diagnostics.</p></html>'
     return HTMLResponse(content,headers=headers)
+
+
+# ---------------------------------------------------------------------------------------------
+# Strategy library (S1-S10). Added alongside the original PMS Setup 1 workflow above, which is
+# unchanged: /api/runs still accepts only start, end and capital and still runs Setup 1.
+# Library runs use NSE bhavcopy data and share the job queue, polling and report downloads.
+# ---------------------------------------------------------------------------------------------
+from packages.strategies.catalog import STRATEGY_IDS, public_catalog
+
+class StrategyRunRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    strategy: Literal[STRATEGY_IDS]
+    start: date
+    end: date
+    capital: float=Field(default=1000000,ge=10000,le=1e10,allow_inf_nan=False)
+    @model_validator(mode='after')
+    def dates(self):
+        if self.start < date(2011,1,1) or self.end < self.start or self.end>=today():
+            raise ValueError('Choose ordered dates from 2011 onward, ending before today in India.')
+        if (self.end-self.start).days>3653:
+            raise ValueError('Limit a run to ten years.')
+        return self
+
+@app.get('/api/strategies')
+def strategies():
+    return {'strategies':public_catalog()}
+
+@app.post('/api/strategy-runs',status_code=202)
+def strategy_run(request:Request,body:StrategyRunRequest):
+    sid=request.state.sid
+    with LOCK:
+        if any(j['owner']==sid and j['status'] in ('QUEUED','RUNNING') for j in JOBS.values()):
+            raise HTTPException(409,'A backtest is already running in this session.')
+        if sum(j['status'] in ('QUEUED','RUNNING') for j in JOBS.values())>=3:
+            raise HTTPException(429,'The backtest queue is full. Try again shortly.')
+        if len(JOBS)>150: raise HTTPException(503,'Report capacity reached. Retry after older sessions expire.')
+        job_id=secrets.token_urlsafe(24)
+        job={'id':job_id,'owner':sid,'status':'QUEUED','progress':0,'message':'Waiting for backtest worker',
+             'created':time.monotonic(),'cancel':threading.Event(),'report':None,'error':None}
+        JOBS[job_id]=job
+    POOL.submit(strategy_work,job,body)
+    return {'id':job_id,'status':'QUEUED','strategy':body.strategy}
+
+def strategy_work(job,body):
+    from packages.strategies.runner import run_strategy
+    from packages.strategies.bhavcopy import BhavcopyUnavailable
+    began=time.monotonic()
+    def check():
+        if job['cancel'].is_set(): raise Cancelled()
+        if time.monotonic()-began>3600: raise DataGap('Run exceeded the one-hour limit. Use a shorter date range.')
+    def progress(value,message):
+        check()
+        with LOCK: job.update(status='RUNNING',progress=int(value),message=message)
+    try:
+        progress(2,'Preparing strategy '+body.strategy)
+        report=run_strategy(body.strategy,body.start,body.end,body.capital,progress,check)
+        check()
+        with LOCK: job.update(status=report['status'],progress=100,message='Report ready',report=report)
+    except Cancelled:
+        with LOCK: job.update(status='CANCELLED',message='Run cancelled. No broker orders were placed.')
+    except (DataGap,BhavcopyUnavailable) as e:
+        with LOCK: job.update(status='BLOCKED',message='Historical data checks blocked this run',error=str(e)[:2500])
+    except MemoryError:
+        with LOCK: job.update(status='FAILED',message='Backtest could not complete',error='The server ran out of memory. Use a shorter date range or a larger instance.')
+    except Exception:
+        with LOCK: job.update(status='FAILED',message='Backtest could not complete',error='The strategy engine or data loader returned an error. No performance report was produced.')
+    finally:
+        with LOCK: job['elapsed_seconds']=round(time.monotonic()-began,1)

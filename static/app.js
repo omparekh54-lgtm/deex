@@ -36,6 +36,7 @@ function begin(job){
 }
 $('runForm').addEventListener('submit',async event=>{
  event.preventDefault();message('runError','');
+ if(selectedStrategy!=='PMS_SETUP1'){const body={strategy:selectedStrategy,start:$('start').value,end:$('end').value,capital:Number($('capital').value)};lockRun(true);try{begin(await api('/api/strategy-runs',body));}catch(e){message('runError',e.message,true);lockRun(false);}return;}
  if(!state.database_configured){message('runError','The full PMS historical dataset is not connected yet. This is required to run your strategy across 100 stocks.',true);return;}
  const body={start:$('start').value,end:$('end').value,capital:Number($('capital').value)};
  lockRun(true);try{begin(await api('/api/runs',body));}catch(e){message('runError',e.message,true);lockRun(false);}
@@ -54,9 +55,11 @@ function element(tag,text,className){const e=document.createElement(tag);if(text
 function showReport(){
  $('reportPanel').hidden=false;$('emptyState').hidden=true;$('resultTag').textContent=report.status==='NO_TRADES'?'No closed trades':'100-stock PMS report';
  $('reportNote').textContent='FULL PMS STRATEGY — 100 automatically selected stocks, one shared portfolio, original strategy rules. Historical results remain exploratory and uncertified.';
+ if(report.strategy_id){$('resultTag').textContent=report.status==='NO_TRADES'?'No closed trades':report.strategy_id+' report';const a=report.diagnostics.audit||{};$('reportNote').textContent=report.mode_label.toUpperCase()+' — all NSE stocks passing its filters, one shared portfolio. Audit verdict: '+(a.verdict||'—')+'. Historical results remain exploratory and uncertified.';}
  const m=report.metrics;const cards=[['Total return',pct(m.total_return_pct),money.format(m.ending_equity)+' ending equity',m.total_return_pct],['Annualized return',pct(m.cagr_pct),'CAGR over selected dates',m.cagr_pct],['Max drawdown',pct(m.max_drawdown_pct),'Daily marked portfolio NAV',-m.max_drawdown_pct],['Win rate',pct(m.win_rate_pct),m.closed_trades+' completed cycles',null]];
  $('metrics').replaceChildren(...cards.map(([label,value,sub,sign])=>{const box=element('div',null,'metric');box.append(element('div',label,'metric-label'),element('div',value,'metric-value'+(sign==null?'':sign<0?' negative':' positive')),element('div',sub,'metric-sub'));return box;}));
  $('chartCaption').textContent=report.parameters.start+' — '+report.parameters.end+' · '+report.parameters.symbols.length+' automatically selected NSE stocks';
+ if(report.strategy_id){const b=report.benchmarks||{};$('chartCaption').textContent=report.parameters.start+' — '+report.parameters.end+' · '+report.parameters.symbols.length+' instruments traded'+(b.NIFTYBEES?' · Nifty 50 ETF CAGR '+pct(b.NIFTYBEES.cagr_pct)+' (price only)':'');}
  ['csv','json','html'].forEach(kind=>$(kind+'Download').href='/api/runs/'+currentJob+'/download/'+kind);
  resultView='trades';document.querySelectorAll('.result-tab').forEach(b=>b.classList.toggle('active',b.dataset.result===resultView));renderTable();requestAnimationFrame(drawChart);
 }
@@ -103,3 +106,22 @@ function drawChart(){
 }
 let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(drawChart,100);});
 (async()=>{try{state=await api('/api/status');updateStatus();}catch(e){message('runError','Service is starting. Refresh in a moment.',true);}})();
+
+// ---- Strategy library (S1-S10). The PMS Setup 1 path above is unchanged and stays the default.
+let selectedStrategy='PMS_SETUP1', catalog=[];
+function libraryPanel(item){
+ const box=$('libraryPanel');box.replaceChildren();
+ const head=element('div',null,'fixed-strategy');head.append(element('h3',item.name),element('p',item.summary),element('span',item.family,'pill connected'));box.append(head);
+ if(item.audit){const n=element('div',null,'notice'+(item.audit.verdict.startsWith('Reject')?' blocked':''));n.append(element('span','i','notice-icon'));const t=element('div');t.append(element('strong','Audit verdict: '+item.audit.verdict),element('p','Audited CAGR '+item.audit.recent+'% (Oct 2021–Sep 2026) and '+item.audit.holdout+'% (Jan 2011–Sep 2021 holdout), versus 7.2% and 11.0% for the Nifty 50 ETF. '+item.audit.note));n.append(t);box.append(n);}
+ const ul=element('ul',null,'library-rules');item.rules.forEach(r=>ul.append(element('li',r)));box.append(ul);
+ box.append(element('p','Data: '+item.data+'. Runs from 2011 onward; the first run downloads and caches the NSE files, which can take several minutes. No broker connection or PMS database is needed.','helper'));
+}
+function selectStrategy(id){
+ selectedStrategy=id;const item=catalog.find(c=>c.id===id);const pms=id==='PMS_SETUP1';
+ $('pmsPanel').hidden=!pms;$('libraryPanel').hidden=pms;if(!pms&&item)libraryPanel(item);message('runError','');
+}
+function libraryBlueprint(){
+ const grid=$('libraryBlueprint');if(!grid)return;grid.replaceChildren();
+ catalog.filter(c=>c.id!=='PMS_SETUP1').forEach(c=>{const a=element('article',null,'card');a.append(element('span',c.id,'module-letter'),element('h2',c.name.replace(c.id+' ','')),element('p',c.summary));const ul=element('ul',null,'library-rules');c.rules.forEach(r=>ul.append(element('li',r)));a.append(ul);if(c.audit)a.append(element('p','Audit: '+c.audit.verdict+' · '+c.audit.recent+'% (2021–26) · '+c.audit.holdout+'% (2011–21)','helper'));grid.append(a);});
+}
+(async()=>{try{for(let i=0;i<150&&!state.csrf_token;i++)await new Promise(r=>setTimeout(r,100));const data=await api('/api/strategies');catalog=data.strategies;const sel=$('strategySelect');sel.replaceChildren();catalog.forEach(c=>{const o=element('option',c.name+(c.audit?' — '+c.audit.verdict:''));o.value=c.id;sel.append(o);});sel.value='PMS_SETUP1';sel.addEventListener('change',()=>selectStrategy(sel.value));libraryBlueprint();}catch(e){/* catalog unavailable: the PMS strategy remains usable */}})();
