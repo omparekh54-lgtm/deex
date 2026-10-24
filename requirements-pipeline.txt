@@ -1,0 +1,9 @@
+# Fast data pipeline + local backtests (scripts/fetch_all_data.py, scripts/run_all_strategies.py).
+# Python 3.11-3.13. git on PATH makes the price download much faster (optional).
+pandas==2.3.3
+numpy==2.3.4
+pyarrow>=17
+httpx==0.28.1
+SQLAlchemy==2.0.44
+PyYAML==6.0.3
+beautifulsoup4==4.13.5

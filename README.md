@@ -1,5 +1,20 @@
 # DEEX PMS Backtest
 
+## Quick start: download ten years of data and test all 11 strategies
+
+```powershell
+git clone -b data/fast-pipeline https://github.com/omparekh54-lgtm/deex.git
+cd deex
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-pipeline.txt
+python scripts/fetch_all_data.py           # everything for all 11 strategies -> .\deex_data
+python scripts/run_all_strategies.py       # reports -> .\deex_data\reports\summary.md
+```
+
+`python scripts/fetch_all_data.py --quick` fetches only what S1–S10 need (about 5–10 minutes).
+Details, timings, rate limits and data limits: [docs/fast-data-pipeline.md](docs/fast-data-pipeline.md).
+
 Local historical data acquisition is documented in
 [docs/local-data-pipeline.md](docs/local-data-pipeline.md). It adds a resumable
 SQLite/source-evidence lake for the 11 strategy specifications. The lake is a
