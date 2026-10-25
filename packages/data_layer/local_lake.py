@@ -327,6 +327,7 @@ class Lake:
             'earnings': ('corporate-board-meetings', {'index': 'equities'}),
             'shareholding_discovery': ('corporate-share-holdings-master', {'index': 'equities'}),
             'financial_discovery': ('corporates-financial-results', {'index': 'equities', 'period': 'Quarterly'}),
+            'annual_financial_discovery': ('corporates-financial-results', {'index': 'equities', 'period': 'Annual'}),
         }
         path, params = endpoints[dataset]
         if dataset == 'financial_discovery' and end >= '2025-03-01':
@@ -358,7 +359,7 @@ class Lake:
                 key = hashlib.sha256(dumps(row).encode()).hexdigest()
                 self.db.execute('insert or ignore into records values(?,?,?,?,?,?)',
                                 (dataset, key, str(effective), known.isoformat(), dumps({'symbol': symbol, 'source_record': row}), digest))
-        if dataset in ('financial_discovery', 'shareholding_discovery'):
+        if dataset in ('financial_discovery', 'annual_financial_discovery', 'shareholding_discovery'):
             rows = payload if isinstance(payload, list) else payload.get('data', []) if isinstance(payload, dict) else []
             if not isinstance(rows, list):
                 raise SourceError('discovery_schema_changed')
@@ -369,7 +370,7 @@ class Lake:
                 allowed_url(url)
                 key = hashlib.sha256(dumps(row).encode()).hexdigest()
                 self.db.execute('insert or ignore into documents(dataset,key,url,payload) values(?,?,?,?)',
-                                ('financials' if dataset == 'financial_discovery' else 'shareholding', key, url, dumps(row)))
+                                ('shareholding' if dataset == 'shareholding_discovery' else 'financials', key, url, dumps(row)))
         return 1, [digest]
 
     def _integrated_discovery(self, start, end, http):
@@ -413,7 +414,7 @@ class Lake:
                 raise SourceError('financial_pagination_truncated')
         raise SourceError('financial_page_budget_exceeded')
 
-    def documents(self, *, limit=100, http_factory=None):
+    def documents(self, *, limit=100, http_factory=None, pending_only=False):
         """Process original XBRL; errors are retained for review, never zero-filled."""
         if not 1 <= limit <= 10000:
             raise ValueError('limit must be 1..10000')
@@ -421,7 +422,8 @@ class Lake:
         from .cloud_sources import parse_shareholding
         from .exchange_financials import NSEIntegratedFinancialsProvider, filings_from_exchange_record
         provider = object.__new__(NSEIntegratedFinancialsProvider)
-        jobs = self.db.execute("select * from documents where status!='DONE' order by dataset,key limit ?", (limit,)).fetchall()
+        condition = "status='PENDING'" if pending_only else "status!='DONE'"
+        jobs = self.db.execute("select * from documents where " + condition + " order by dataset,key limit ?", (limit,)).fetchall()
         results = []
         for job in jobs:
             try:
@@ -459,19 +461,19 @@ class Lake:
         return results
 
     def fetch(self, *, datasets=('prices', 'indices'), limit=100, retry=False,
-              start=None, end=None, http_factory=None):
+              start=None, end=None, http_factory=None, exact=False):
         if not 1 <= limit <= 10000:
             raise ValueError('limit must be 1..10000')
-        allowed = {'prices', 'indices', 'actions', 'earnings', 'financial_discovery', 'shareholding_discovery'}
+        allowed = {'prices', 'indices', 'actions', 'earnings', 'financial_discovery', 'annual_financial_discovery', 'shareholding_discovery'}
         if not datasets or not set(datasets) <= allowed:
             raise ValueError('Unsupported acquisition dataset')
         where = 'dataset in (' + ','.join('?' for _ in datasets) + ') and status '
         where += "in ('PENDING','MISSING','FAILED','PARTIAL')" if retry else "='PENDING'"
         params = list(datasets)
         if start:
-            where += ' and start>=?'; params.append(str(start))
+            where += ' and start'+('=?' if exact else '>=?'); params.append(str(start))
         if end:
-            where += ' and end<=?'; params.append(str(end))
+            where += ' and end'+('=?' if exact else '<=?'); params.append(str(end))
         jobs = self.db.execute('select * from jobs where ' + where + ' order by start,dataset limit ?',
                                params + [limit]).fetchall()
         result = []
@@ -486,7 +488,8 @@ class Lake:
                         self.db.execute('insert or ignore into job_receipts values(?,?,?,?)', (*key, digest))
                     # Discovery is explicitly STAGED, not DONE/complete.
                     status = 'DONE' if key[0] in ('prices', 'indices') else 'STAGED'
-                    if key[0] == 'indices' and (count < len(REQUIREMENTS['benchmarks']) or
+                    if key[0] == 'indices' and (not set(REQUIREMENTS['benchmarks']).issubset(
+                            {r[0] for r in self.db.execute('select code from indices where trade_date=?', (key[1],))}) or
                             self.db.execute('select count(*) from indices where trade_date=? and '
                                             '(open is null or high is null or low is null)', (key[1],)).fetchone()[0]):
                         status = 'PARTIAL'

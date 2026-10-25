@@ -69,3 +69,21 @@ pytest -q
 ```
 
 Tests cover inherited trade/rally behavior, locked request policy, 100-stock selection, pre-start sampling, missing-history blocking, session isolation, mocked full-report exports and the seven-position portfolio cap. Mocked/synthetic tests do not certify a real 100-stock historical A/B/C/E run. That still requires the connected and complete historical dataset.
+
+## Collect free data locally with one command
+
+After pulling the repository, run from the project folder:
+
+```powershell
+python fetch_data.py
+```
+
+The runner installs its parser dependencies when needed, plans ten years plus
+warm-up history, collects supported free exchange sources, displays progress,
+and resumes pending work on the next run. Data stays in ignored `local_data/`.
+Rate-limit/access-denied responses stop collection with a saved cooldown.
+`python fetch_data.py --retry` retries failed/missing tasks once.
+
+See [the free collection guide](docs/free-data-command.md) for data coverage,
+existing XML cache reuse, reports, exit codes and historical limitations.
+A processed queue is not a certificate of complete backtest data.

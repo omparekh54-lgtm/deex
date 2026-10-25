@@ -2,3 +2,5 @@
 # Price/index acquisition and SQLite storage use the standard library.
 beautifulsoup4==4.13.5
 httpx==0.28.1
+# Required by zoneinfo on Windows and minimal Python installations.
+tzdata==2025.2
