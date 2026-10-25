@@ -1,0 +1,367 @@
+{
+  "status": "NOT_CERTIFIED_FOR_BACKTEST",
+  "prices": {
+    "rows": 0,
+    "security_isins": 0,
+    "symbols": 0,
+    "first_date": null,
+    "last_date": null
+  },
+  "document_jobs": [
+    {
+      "dataset": "financials",
+      "status": "DONE",
+      "jobs": 92
+    },
+    {
+      "dataset": "financials",
+      "status": "FAILED",
+      "jobs": 1243
+    },
+    {
+      "dataset": "financials",
+      "status": "PENDING",
+      "jobs": 134625
+    }
+  ],
+  "exact_company_count": null,
+  "company_count_reason": "ISINs/symbols are securities, not unique issuers. Dated identity mapping and complete calendar coverage required.",
+  "datasets": {
+    "prices": 0,
+    "indices": 7335,
+    "calendar": 0,
+    "identity": 0,
+    "actions": 0,
+    "financials": 123,
+    "shareholding": 0,
+    "sectors": 0,
+    "membership": 0,
+    "surveillance": 0,
+    "earnings": 0,
+    "costs": 0,
+    "financial_discovery_raw": 241
+  },
+  "missing_datasets": [
+    "prices",
+    "calendar",
+    "identity",
+    "actions",
+    "shareholding",
+    "sectors",
+    "membership",
+    "surveillance",
+    "earnings",
+    "costs"
+  ],
+  "jobs": [
+    {
+      "dataset": "actions",
+      "status": "PENDING",
+      "jobs": 157,
+      "rows": 0
+    },
+    {
+      "dataset": "annual_financial_discovery",
+      "status": "PENDING",
+      "jobs": 137,
+      "rows": 0
+    },
+    {
+      "dataset": "current_master",
+      "status": "PENDING",
+      "jobs": 1,
+      "rows": 0
+    },
+    {
+      "dataset": "current_nifty50",
+      "status": "PENDING",
+      "jobs": 1,
+      "rows": 0
+    },
+    {
+      "dataset": "current_nifty500",
+      "status": "PENDING",
+      "jobs": 1,
+      "rows": 0
+    },
+    {
+      "dataset": "earnings",
+      "status": "PENDING",
+      "jobs": 157,
+      "rows": 0
+    },
+    {
+      "dataset": "financial_discovery",
+      "status": "FAILED",
+      "jobs": 10,
+      "rows": 0
+    },
+    {
+      "dataset": "financial_discovery",
+      "status": "STAGED",
+      "jobs": 147,
+      "rows": 10086
+    },
+    {
+      "dataset": "indices",
+      "status": "PENDING",
+      "jobs": 4384,
+      "rows": 0
+    },
+    {
+      "dataset": "price_supplements",
+      "status": "PENDING",
+      "jobs": 2969,
+      "rows": 0
+    },
+    {
+      "dataset": "prices",
+      "status": "PENDING",
+      "jobs": 1415,
+      "rows": 0
+    },
+    {
+      "dataset": "prices",
+      "status": "REUSED_LOCAL",
+      "jobs": 2969,
+      "rows": 0
+    },
+    {
+      "dataset": "shareholding_discovery",
+      "status": "PENDING",
+      "jobs": 157,
+      "rows": 0
+    },
+    {
+      "dataset": "surveillance_daily",
+      "status": "PENDING",
+      "jobs": 1028,
+      "rows": 0
+    }
+  ],
+  "etfs": {
+    "NIFTYBEES": {
+      "rows": 0,
+      "first_observation": null,
+      "last_observation": null
+    },
+    "JUNIORBEES": {
+      "rows": 0,
+      "first_observation": null,
+      "last_observation": null
+    },
+    "MID150BEES": {
+      "rows": 0,
+      "first_observation": null,
+      "last_observation": null
+    },
+    "BANKBEES": {
+      "rows": 0,
+      "first_observation": null,
+      "last_observation": null
+    },
+    "PSUBNKBEES": {
+      "rows": 0,
+      "first_observation": null,
+      "last_observation": null
+    },
+    "ITBEES": {
+      "rows": 0,
+      "first_observation": null,
+      "last_observation": null
+    },
+    "PHARMABEES": {
+      "rows": 0,
+      "first_observation": null,
+      "last_observation": null
+    },
+    "CPSEETF": {
+      "rows": 0,
+      "first_observation": null,
+      "last_observation": null
+    },
+    "GOLDBEES": {
+      "rows": 0,
+      "first_observation": null,
+      "last_observation": null
+    },
+    "SILVERBEES": {
+      "rows": 0,
+      "first_observation": null,
+      "last_observation": null
+    }
+  },
+  "strategies": {
+    "PMS_SETUP1": {
+      "status": "BLOCKED",
+      "missing": [
+        "prices",
+        "calendar",
+        "identity",
+        "actions",
+        "shareholding",
+        "sectors",
+        "membership",
+        "surveillance",
+        "earnings",
+        "costs"
+      ]
+    },
+    "S1": {
+      "status": "BLOCKED",
+      "missing": [
+        "prices",
+        "calendar",
+        "identity",
+        "actions",
+        "costs"
+      ]
+    },
+    "S2": {
+      "status": "BLOCKED",
+      "missing": [
+        "prices",
+        "calendar",
+        "identity",
+        "actions",
+        "costs"
+      ]
+    },
+    "S3": {
+      "status": "BLOCKED",
+      "missing": [
+        "prices",
+        "calendar",
+        "identity",
+        "actions",
+        "costs"
+      ]
+    },
+    "S4": {
+      "status": "BLOCKED",
+      "missing": [
+        "prices",
+        "calendar",
+        "identity",
+        "actions",
+        "costs"
+      ]
+    },
+    "S5": {
+      "status": "BLOCKED",
+      "missing": [
+        "prices",
+        "calendar",
+        "identity",
+        "actions",
+        "costs"
+      ]
+    },
+    "S6": {
+      "status": "BLOCKED",
+      "missing": [
+        "prices",
+        "calendar",
+        "identity",
+        "actions",
+        "costs"
+      ]
+    },
+    "S7": {
+      "status": "BLOCKED",
+      "missing": [
+        "prices",
+        "calendar",
+        "identity",
+        "actions",
+        "costs"
+      ]
+    },
+    "S8": {
+      "status": "BLOCKED",
+      "missing": [
+        "prices",
+        "calendar",
+        "identity",
+        "actions",
+        "costs"
+      ]
+    },
+    "S9": {
+      "status": "BLOCKED",
+      "missing": [
+        "prices",
+        "calendar",
+        "identity",
+        "actions",
+        "costs"
+      ]
+    },
+    "S10": {
+      "status": "BLOCKED",
+      "missing": [
+        "prices",
+        "calendar",
+        "identity",
+        "actions",
+        "costs"
+      ]
+    }
+  },
+  "notes": [
+    "Raw discovery jobs do not establish complete normalized history.",
+    "404s remain missing until checked against an official session calendar.",
+    "No ingestion count establishes point-in-time correctness or PMS replay compatibility."
+  ],
+  "existing_data": {
+    "sources": [
+      {
+        "path": "C:\\Users\\Om Parekh\\Downloads\\data.zip",
+        "kind": "zip",
+        "updated_at": "2026-10-25T05:15:20.134423+00:00"
+      }
+    ],
+    "local_price_rows": 5147157,
+    "local_price_symbols": 2736,
+    "local_financial_rows": 14150,
+    "local_reference_rows": 501,
+    "xml_cache_entries": 21015,
+    "invalid_import_rows": 838,
+    "reused_download_tasks": 2969,
+    "price_basis": "UPLOADED_UNVERIFIED; kept separate from raw exchange bars",
+    "financial_status": "UPLOADED_UNVERIFIED; original units, timestamp timezone and completeness require audit"
+  },
+  "run_outcome": "INTERRUPTED",
+  "updated_at": "2026-10-25T06:01:18.338912+00:00",
+  "network_requests": 1421,
+  "response_cache_hits": 212,
+  "source_errors": [
+    {
+      "dataset": "financial_discovery",
+      "status": "FAILED",
+      "error": "financial_identity_or_date_filter_failed",
+      "tasks": 6
+    },
+    {
+      "dataset": "financial_discovery",
+      "status": "FAILED",
+      "error": "financial_pagination_changed",
+      "tasks": 3
+    },
+    {
+      "dataset": "financial_discovery",
+      "status": "FAILED",
+      "error": "financial_repeated_page",
+      "tasks": 1
+    }
+  ],
+  "limitations": [
+    "Processed tasks are not a certificate of complete history.",
+    "No complete free historical adapters for pre-2024 ASM/GSM, dated sector/index membership, identity changes or costs.",
+    "Surveillance daily snapshots remain separate from audited continuous intervals.",
+    "HTTP 404 is unknown/missing, never automatically a holiday.",
+    "Legacy listing pagination, dates, financial periods, revisions and original publication times require coverage audit.",
+    "Uploaded OHLCV is preserved separately with unverified adjustment basis; raw exchange rows supplement missing values without overwriting originals.",
+    "This SQLite acquisition lake does not replace the PostgreSQL PMS replay database."
+  ]
+}
