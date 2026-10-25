@@ -1,0 +1,570 @@
+{
+  "generated_at": "2026-10-25T06:32:09.255424+00:00",
+  "document_groups": [
+    {
+      "dataset": "financials",
+      "status": "DONE",
+      "error": null,
+      "jobs": 93
+    },
+    {
+      "dataset": "financials",
+      "status": "FAILED",
+      "error": "document_parse_or_fetch_failed",
+      "jobs": 1233
+    },
+    {
+      "dataset": "financials",
+      "status": "FAILED",
+      "error": "financial_core_facts_missing",
+      "jobs": 2
+    },
+    {
+      "dataset": "financials",
+      "status": "FAILED",
+      "error": "financial_core_facts_or_contexts_missing",
+      "jobs": 2
+    },
+    {
+      "dataset": "financials",
+      "status": "FAILED",
+      "error": "source_http_404",
+      "jobs": 5
+    },
+    {
+      "dataset": "financials",
+      "status": "PENDING",
+      "error": null,
+      "jobs": 134625
+    }
+  ],
+  "failed_samples": [
+    {
+      "dataset": "financials",
+      "key": "00004a8c428a8c5332f0d8ec0ae57ccf8474ae3d81960cd9e3e750fa98a31a5c",
+      "error": "financial_core_facts_or_contexts_missing",
+      "error_type": "SourceError",
+      "frames": [
+        {
+          "file": "local_lake.py",
+          "function": "documents",
+          "line": 452
+        }
+      ],
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_45041_105359_28052019075519_WEB.xml",
+      "metadata_fields": [
+        "audited",
+        "bank",
+        "broadCastDate",
+        "companyName",
+        "consolidated",
+        "cumulative",
+        "difference",
+        "exchdisstime",
+        "filingDate",
+        "financialYear",
+        "format",
+        "fromDate",
+        "indAs",
+        "industry",
+        "isin",
+        "oldNewFlag",
+        "params",
+        "period",
+        "reInd",
+        "relatingTo",
+        "resultDescription",
+        "resultDetailedDataLink",
+        "seqNumber",
+        "symbol",
+        "toDate",
+        "xbrl"
+      ],
+      "filing_metadata": {
+        "symbol": "JIKIND",
+        "exchdisstime": "25-Jun-2019 11:27:39",
+        "period": "Quarterly",
+        "consolidated": "Consolidated"
+      }
+    },
+    {
+      "dataset": "financials",
+      "key": "0001c24863fa2145a85ee27a466a7d7ada262ec83f251787de83e15e9505a267",
+      "error": "source_http_404",
+      "error_type": "SourceError",
+      "frames": [
+        {
+          "file": "local_lake.py",
+          "function": "documents",
+          "line": 440
+        },
+        {
+          "file": "free_pipeline.py",
+          "function": "fetch",
+          "line": 199
+        },
+        {
+          "file": "free_pipeline.py",
+          "function": "_request",
+          "line": 153
+        }
+      ],
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/-",
+      "metadata_fields": [
+        "audited",
+        "bank",
+        "broadCastDate",
+        "companyName",
+        "consolidated",
+        "cumulative",
+        "difference",
+        "exchdisstime",
+        "filingDate",
+        "financialYear",
+        "format",
+        "fromDate",
+        "indAs",
+        "industry",
+        "isin",
+        "oldNewFlag",
+        "params",
+        "period",
+        "reInd",
+        "relatingTo",
+        "resultDescription",
+        "resultDetailedDataLink",
+        "seqNumber",
+        "symbol",
+        "toDate",
+        "xbrl"
+      ],
+      "filing_metadata": {
+        "symbol": "JAGSNPHARM",
+        "exchdisstime": "28-Feb-2018 11:34:03",
+        "period": "Quarterly",
+        "consolidated": "Non-Consolidated"
+      }
+    },
+    {
+      "dataset": "financials",
+      "key": "00020bc6ef078618dd36a747ffd51f1c6afc057e87a983cf74eeb8eb3e9988ac",
+      "error": "financial_core_facts_or_contexts_missing",
+      "error_type": "SourceError",
+      "frames": [
+        {
+          "file": "local_lake.py",
+          "function": "documents",
+          "line": 452
+        }
+      ],
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_84202_652784_10052022085329_WEB.xml",
+      "metadata_fields": [
+        "audited",
+        "bank",
+        "broadCastDate",
+        "companyName",
+        "consolidated",
+        "cumulative",
+        "difference",
+        "exchdisstime",
+        "filingDate",
+        "financialYear",
+        "format",
+        "fromDate",
+        "indAs",
+        "industry",
+        "isin",
+        "oldNewFlag",
+        "params",
+        "period",
+        "reInd",
+        "relatingTo",
+        "resultDescription",
+        "resultDetailedDataLink",
+        "seqNumber",
+        "symbol",
+        "toDate",
+        "xbrl"
+      ],
+      "filing_metadata": {
+        "symbol": "IDEA",
+        "exchdisstime": "10-May-2022 20:56:03",
+        "period": "Quarterly",
+        "consolidated": "Non-Consolidated"
+      }
+    },
+    {
+      "dataset": "financials",
+      "key": "00031227eef0e2ccf854859840bdb8b1943058695703f022a5e2aa4f0c7752be",
+      "error": "source_http_404",
+      "error_type": "SourceError",
+      "frames": [
+        {
+          "file": "local_lake.py",
+          "function": "documents",
+          "line": 440
+        },
+        {
+          "file": "free_pipeline.py",
+          "function": "fetch",
+          "line": 199
+        },
+        {
+          "file": "free_pipeline.py",
+          "function": "_request",
+          "line": 153
+        }
+      ],
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/-",
+      "metadata_fields": [
+        "audited",
+        "bank",
+        "broadCastDate",
+        "companyName",
+        "consolidated",
+        "cumulative",
+        "difference",
+        "exchdisstime",
+        "filingDate",
+        "financialYear",
+        "format",
+        "fromDate",
+        "indAs",
+        "industry",
+        "isin",
+        "oldNewFlag",
+        "params",
+        "period",
+        "reInd",
+        "relatingTo",
+        "resultDescription",
+        "resultDetailedDataLink",
+        "seqNumber",
+        "symbol",
+        "toDate",
+        "xbrl"
+      ],
+      "filing_metadata": {
+        "symbol": "EIHOTEL",
+        "exchdisstime": "25-Jan-2017 18:42:03",
+        "period": "Quarterly",
+        "consolidated": "Non-Consolidated"
+      }
+    },
+    {
+      "dataset": "financials",
+      "key": "00036a89536bd2d9d3fcdd906ce374a9f57661003f5a215e1936e483e619af75",
+      "error": "source_http_404",
+      "error_type": "SourceError",
+      "frames": [
+        {
+          "file": "local_lake.py",
+          "function": "documents",
+          "line": 440
+        },
+        {
+          "file": "free_pipeline.py",
+          "function": "fetch",
+          "line": 199
+        },
+        {
+          "file": "free_pipeline.py",
+          "function": "_request",
+          "line": 153
+        }
+      ],
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_44420_102937_20052019011356_WEB.xml",
+      "metadata_fields": [
+        "audited",
+        "bank",
+        "broadCastDate",
+        "companyName",
+        "consolidated",
+        "cumulative",
+        "difference",
+        "exchdisstime",
+        "filingDate",
+        "financialYear",
+        "format",
+        "fromDate",
+        "indAs",
+        "industry",
+        "isin",
+        "oldNewFlag",
+        "params",
+        "period",
+        "reInd",
+        "relatingTo",
+        "resultDescription",
+        "resultDetailedDataLink",
+        "seqNumber",
+        "symbol",
+        "toDate",
+        "xbrl"
+      ],
+      "filing_metadata": {
+        "symbol": "ARROWGREEN",
+        "exchdisstime": "20-May-2019 13:16:09",
+        "period": "Quarterly",
+        "consolidated": "Non-Consolidated"
+      }
+    },
+    {
+      "dataset": "financials",
+      "key": "0004675e8767a20cb88dc7000bb954e2d5ac8cdf2d40d9539554fcc3ad1450d8",
+      "error": "source_http_404",
+      "error_type": "SourceError",
+      "frames": [
+        {
+          "file": "local_lake.py",
+          "function": "documents",
+          "line": 440
+        },
+        {
+          "file": "free_pipeline.py",
+          "function": "fetch",
+          "line": 199
+        },
+        {
+          "file": "free_pipeline.py",
+          "function": "_request",
+          "line": 153
+        }
+      ],
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/-",
+      "metadata_fields": [
+        "audited",
+        "bank",
+        "broadCastDate",
+        "companyName",
+        "consolidated",
+        "cumulative",
+        "difference",
+        "exchdisstime",
+        "filingDate",
+        "financialYear",
+        "format",
+        "fromDate",
+        "indAs",
+        "industry",
+        "isin",
+        "oldNewFlag",
+        "params",
+        "period",
+        "reInd",
+        "relatingTo",
+        "resultDescription",
+        "resultDetailedDataLink",
+        "seqNumber",
+        "symbol",
+        "toDate",
+        "xbrl"
+      ],
+      "filing_metadata": {
+        "symbol": "PILITA",
+        "exchdisstime": "15-Feb-2017 15:50:05",
+        "period": "Quarterly",
+        "consolidated": "Non-Consolidated"
+      }
+    },
+    {
+      "dataset": "financials",
+      "key": "0004c33a0dfcdc7e841f1a49f64d268db7ec7af74aff5ebd59cfd94b32516617",
+      "error": "financial_core_facts_missing",
+      "error_type": "SourceError",
+      "frames": [
+        {
+          "file": "local_lake.py",
+          "function": "documents",
+          "line": 453
+        }
+      ],
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_115797_1309786_13112024080951.xml",
+      "metadata_fields": [
+        "audited",
+        "bank",
+        "broadCastDate",
+        "companyName",
+        "consolidated",
+        "cumulative",
+        "difference",
+        "exchdisstime",
+        "filingDate",
+        "financialYear",
+        "format",
+        "fromDate",
+        "indAs",
+        "industry",
+        "isin",
+        "oldNewFlag",
+        "params",
+        "period",
+        "reInd",
+        "relatingTo",
+        "resultDescription",
+        "resultDetailedDataLink",
+        "seqNumber",
+        "symbol",
+        "toDate",
+        "xbrl"
+      ],
+      "filing_metadata": {
+        "symbol": "AKSHOPTFBR",
+        "exchdisstime": "13-Nov-2024 20:11:12",
+        "period": "Quarterly",
+        "consolidated": "Non-Consolidated"
+      }
+    },
+    {
+      "dataset": "financials",
+      "key": "0005079a3199887bceaf35687f7b13b521a820cd29bf4142e5dd921981ed04fa",
+      "error": "financial_core_facts_missing",
+      "error_type": "SourceError",
+      "frames": [
+        {
+          "file": "local_lake.py",
+          "function": "documents",
+          "line": 453
+        }
+      ],
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_98916_977445_06112023033423.xml",
+      "metadata_fields": [
+        "audited",
+        "bank",
+        "broadCastDate",
+        "companyName",
+        "consolidated",
+        "cumulative",
+        "difference",
+        "exchdisstime",
+        "filingDate",
+        "financialYear",
+        "format",
+        "fromDate",
+        "indAs",
+        "industry",
+        "isin",
+        "oldNewFlag",
+        "params",
+        "period",
+        "reInd",
+        "relatingTo",
+        "resultDescription",
+        "resultDetailedDataLink",
+        "seqNumber",
+        "symbol",
+        "toDate",
+        "xbrl"
+      ],
+      "filing_metadata": {
+        "symbol": "GARFIBRES",
+        "exchdisstime": "06-Nov-2023 16:04:06",
+        "period": "Quarterly",
+        "consolidated": "Consolidated"
+      }
+    },
+    {
+      "dataset": "financials",
+      "key": "0005212663a278b667098f6b5c823ba9ba3ea5cdab4b1336cc46430cf67abd8f",
+      "error": "source_http_404",
+      "error_type": "SourceError",
+      "frames": [
+        {
+          "file": "local_lake.py",
+          "function": "documents",
+          "line": 440
+        },
+        {
+          "file": "free_pipeline.py",
+          "function": "fetch",
+          "line": 199
+        },
+        {
+          "file": "free_pipeline.py",
+          "function": "_request",
+          "line": 153
+        }
+      ],
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/-",
+      "metadata_fields": [
+        "audited",
+        "bank",
+        "broadCastDate",
+        "companyName",
+        "consolidated",
+        "cumulative",
+        "difference",
+        "exchdisstime",
+        "filingDate",
+        "financialYear",
+        "format",
+        "fromDate",
+        "indAs",
+        "industry",
+        "isin",
+        "oldNewFlag",
+        "params",
+        "period",
+        "reInd",
+        "relatingTo",
+        "resultDescription",
+        "resultDetailedDataLink",
+        "seqNumber",
+        "symbol",
+        "toDate",
+        "xbrl"
+      ],
+      "filing_metadata": {
+        "symbol": "SSWL",
+        "exchdisstime": "16-Feb-2017 21:48:11",
+        "period": "Quarterly",
+        "consolidated": "Non-Consolidated"
+      }
+    },
+    {
+      "dataset": "financials",
+      "key": "000526e48bce5714fe2b36df5053032ae737c9bb19f27037bac29e1ee7cf2f78",
+      "error": "document_parse_or_fetch_failed",
+      "error_type": null,
+      "frames": [],
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_115799_1309796_13112024081053.xml",
+      "metadata_fields": [
+        "audited",
+        "bank",
+        "broadCastDate",
+        "companyName",
+        "consolidated",
+        "cumulative",
+        "difference",
+        "exchdisstime",
+        "filingDate",
+        "financialYear",
+        "format",
+        "fromDate",
+        "indAs",
+        "industry",
+        "isin",
+        "oldNewFlag",
+        "params",
+        "period",
+        "reInd",
+        "relatingTo",
+        "resultDescription",
+        "resultDetailedDataLink",
+        "seqNumber",
+        "symbol",
+        "toDate",
+        "xbrl"
+      ],
+      "filing_metadata": {
+        "symbol": "ATCOM",
+        "exchdisstime": "13-Nov-2024 20:13:31",
+        "period": "Quarterly",
+        "consolidated": "Consolidated"
+      }
+    }
+  ],
+  "document_count": 135960,
+  "distinct_source_urls": 89446,
+  "note": "Generic historical failures cannot be diagnosed exactly until sampled or retried with detailed logging. No documents were fetched or retried by this command."
+}
