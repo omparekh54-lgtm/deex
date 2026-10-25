@@ -33,6 +33,9 @@ def bootstrap():
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    inputs = parser.add_mutually_exclusive_group()
+    inputs.add_argument('--existing', type=Path, action='append', default=[], help='Existing dataset ZIP or extracted data directory')
+    inputs.add_argument('--fresh', action='store_true', help='Explicitly allow collection without existing data')
     parser.add_argument('--root', type=Path, default=ROOT/'local_data')
     parser.add_argument('--start', type=date.fromisoformat, help='Study start; default ten years before end')
     parser.add_argument('--end', type=date.fromisoformat, help='Study end; default yesterday in India')
@@ -43,7 +46,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     from zoneinfo import ZoneInfo
     from packages.data_layer.free_pipeline import (FreeLake, PoliteHTTP, collector_lock,
-                                                   run_collection, write_report)
+                                                   run_collection, write_report, progress)
+    from packages.data_layer.existing_dataset import find_sources, import_source
     from packages.data_layer.local_lake import years_before
     from packages.data_layer.cloud_sources import SourceError
     end = args.end or datetime.now(ZoneInfo('Asia/Kolkata')).date()-timedelta(days=1)
@@ -53,10 +57,14 @@ def main(argv=None):
         with collector_lock(args.root):
             lake = FreeLake(args.root)
             reuse = args.reuse_cache+[ROOT/'data/_cache/nse']
-            http = PoliteHTTP(args.root, interval=args.interval, reuse_dirs=reuse)
+            http = PoliteHTTP(args.root, interval=args.interval, reuse_dirs=reuse, existing_lake=lake)
             outcome = 'INTERRUPTED'
             code = 130
             try:
+                sources = find_sources(lake,ROOT,args.existing,fresh=args.fresh)
+                for source in sources:
+                    print(f'Inspecting existing dataset: {source}',flush=True)
+                    import_source(lake,source,progress)
                 if args.plan_only:
                     lake.plan_free(start,end)
                     outcome, code = 'PLAN_ONLY', 0
@@ -71,9 +79,9 @@ def main(argv=None):
                     code = 2
             except KeyboardInterrupt:
                 print('\nStopped. Re-run the same command to resume.', flush=True)
-            except (ValueError, SourceError):
+            except (ValueError, SourceError) as exc:
                 outcome, code = 'CONFIGURATION_OR_SOURCE_ERROR', 2
-                print('Check dates and configuration; no data completeness was recorded.', file=sys.stderr)
+                print(str(exc), file=sys.stderr)
             finally:
                 write_report(lake,http,outcome)
                 http.close(); lake.close()

@@ -1,5 +1,8 @@
 # Local data collection for DEEX's 11 strategy specifications
 
+For import-first missing-data collection, use [the one-command guide](free-data-command.md).
+The manual commands below do not import the owner's ZIP automatically.
+
 The expanded all-company plan and Finstack source mapping are in
 [ten-year-finstack-plan.md](ten-year-finstack-plan.md). Collection now defaults
 to our pinned Finstack NSE transport; install `requirements-finstack.txt` too.

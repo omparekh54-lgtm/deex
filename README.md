@@ -72,15 +72,20 @@ Tests cover inherited trade/rally behavior, locked request policy, 100-stock sel
 
 ## Collect free data locally with one command
 
-After pulling the repository, run from the project folder:
+After pulling, copy your existing `data(2).zip` (or extracted `data/` folder)
+into the project folder. Then run:
 
 ```powershell
 python fetch_data.py
 ```
 
-The runner installs its parser dependencies when needed, plans ten years plus
-warm-up history, collects supported free exchange sources, displays progress,
-and resumes pending work on the next run. Data stays in ignored `local_data/`.
+The runner imports existing CSVs/cache first, installs parser dependencies when
+needed, plans ten years plus warm-up history, fetches missing data, displays
+progress, and resumes pending work. Missing turnover/ISIN/series still require
+bulk exchange files on some existing dates; supplied OHLCV is not overwritten. Data stays in ignored `local_data/`. Use `--existing "path/to/data.zip"` for a ZIP
+elsewhere, or `--root C:\DEEX_Data` to keep data outside OneDrive.
+Without existing data, the default command stops before downloading; `--fresh`
+explicitly permits a full new collection.
 Rate-limit/access-denied responses stop collection with a saved cooldown.
 `python fetch_data.py --retry` retries failed/missing tasks once.
 

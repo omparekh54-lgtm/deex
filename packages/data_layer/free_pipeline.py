@@ -25,7 +25,7 @@ from .local_lake import Lake, dumps, stamp
 
 CORE_DATASETS = ('financial_discovery', 'annual_financial_discovery', 'shareholding_discovery',
                  'actions', 'earnings', 'indices', 'prices')
-DATASETS = CORE_DATASETS + ('surveillance_daily', 'current_master', 'current_nifty50', 'current_nifty500')
+DATASETS = CORE_DATASETS + ('price_supplements', 'surveillance_daily', 'current_master', 'current_nifty50', 'current_nifty500')
 BLOCK_CODES = {401, 403, 429}
 
 
@@ -73,7 +73,7 @@ class PoliteHTTP(OfficialHTTP):
     response ends this run; the next command also respects the saved cooldown.
     """
     def __init__(self, root, *, interval=1.5, clock=time.time, sleep=time.sleep,
-                 opener=None, reuse_dirs=()):
+                 opener=None, reuse_dirs=(), existing_lake=None):
         self.root = Path(root)
         self.clock, self.sleep = clock, sleep
         self.interval = max(1.0, interval)
@@ -86,8 +86,12 @@ class PoliteHTTP(OfficialHTTP):
         self.network.execute('create table if not exists responses (url text primary key, path text, sha text, observed text)')
         self.network.execute('create table if not exists hosts (host text primary key, next_at real, blocked_until real)')
         self.session_ready = False
+        self.existing_lake = existing_lake
+        self.zip_handles = {}
 
     def close(self):
+        for archive in self.zip_handles.values():
+            archive.close()
         self.network.close()
 
     def _pace(self, url):
@@ -174,6 +178,13 @@ class PoliteHTTP(OfficialHTTP):
         # Bytes remain evidence; the filing parser still validates identity/period.
         name = Path(urllib.parse.urlsplit(url).path).name
         if name.lower().endswith('.xml'):
+            if self.existing_lake is not None:
+                from .existing_dataset import read_cached_xml
+                body = read_cached_xml(self.existing_lake,name,self.zip_handles)
+                if body and (b'<xbrl' in body.lower() or b':xbrl' in body.lower()):
+                    self.cache_hits += 1
+                    return self._cache(Document(url,body,hashlib.sha256(body).hexdigest(),
+                                               datetime.now(timezone.utc),len(body)))
             for folder in self.reuse_dirs:
                 path = folder / name
                 if path.is_file() and 0 < path.stat().st_size <= MAX_BYTES:
@@ -202,6 +213,11 @@ class PoliteHTTP(OfficialHTTP):
 
 
 class FreeLake(Lake):
+    def __init__(self, root):
+        super().__init__(root)
+        from .existing_dataset import SCHEMA
+        self.db.executescript(SCHEMA)
+
     def plan_free(self, start, end):
         plan = self.plan(start, end)
         with self.db:
@@ -223,9 +239,26 @@ class FreeLake(Lake):
             for dataset in ('current_master', 'current_nifty50', 'current_nifty500'):
                 self.db.execute('insert or ignore into jobs(dataset,start,end) values(?,?,?)',
                                 (dataset, str(end), str(end)))
+        from .existing_dataset import apply_missing_plan
+        apply_missing_plan(self)
         return plan
 
     def _job(self, dataset, start, end, http):
+        if dataset == 'price_supplements':
+            from .local_lake import legacy_url, parse_legacy
+            from .cloud_sources import bhavcopy_url, parse_bhavcopy
+            day = date.fromisoformat(start)
+            legacy = day < date(2024,7,8)
+            doc = http.fetch(legacy_url(day) if legacy else bhavcopy_url(day))
+            rows = parse_legacy(doc.body,day) if legacy else parse_bhavcopy(doc.body,day)
+            digest = self.archive(doc)
+            existing = {r[0] for r in self.db.execute('select symbol from local_prices where trade_date=?',(start,))}
+            missing = [r for r in rows if r['symbol'] not in existing]
+            self._store_prices(missing,digest)
+            self.db.executemany('insert or ignore into price_metadata values(?,?,?,?,?,?,?)',
+                                [(start,r['symbol'],r['isin'],r['series'],str(r['turnover']),
+                                  int(r['volume']),digest) for r in rows if r['symbol'] in existing])
+            return len(rows),[digest]
         if dataset == 'indices':
             from .cloud_sources import BENCHMARKS, rows_csv, parse_day, number
             day = date.fromisoformat(start)
@@ -253,7 +286,7 @@ class FreeLake(Lake):
                 rows.append((start,code,*(str(v) if v is not None else None for v in (o,h,l,c)),digest))
             if not rows:
                 raise SourceError('indices_empty')
-            self.db.executemany('insert or replace into indices values(?,?,?,?,?,?,?)', rows)
+            self.db.executemany('insert or ignore into indices values(?,?,?,?,?,?,?)', rows)
             return len(rows), [digest]
         if dataset == 'current_master':
             self.refresh_current_master(http)
@@ -379,6 +412,8 @@ def run_collection(lake, http, *, start, end, retry=False, progress_fn=progress)
 
 def write_report(lake, http, outcome):
     report = lake.status()
+    from .existing_dataset import import_summary
+    report['existing_data'] = import_summary(lake)
     report.update(run_outcome=outcome, updated_at=stamp(), network_requests=http.requests,
                   response_cache_hits=http.cache_hits,
                   source_errors=[dict(r) for r in lake.db.execute(
@@ -389,7 +424,7 @@ def write_report(lake, http, outcome):
                       'Surveillance daily snapshots remain separate from audited continuous intervals.',
                       'HTTP 404 is unknown/missing, never automatically a holiday.',
                       'Legacy listing pagination, dates, financial periods, revisions and original publication times require coverage audit.',
-                      'Downloaded raw prices are unadjusted; uploaded price CSVs are not automatically mixed into this catalogue.',
+                      'Uploaded OHLCV is preserved separately with unverified adjustment basis; raw exchange rows supplement missing values without overwriting originals.',
                       'This SQLite acquisition lake does not replace the PostgreSQL PMS replay database.'])
     atomic_json(lake.root/'coverage_report.json', report)
     with (lake.root/'failed_tasks.csv').open('w', newline='', encoding='utf-8') as f:
@@ -399,4 +434,8 @@ def write_report(lake, http, outcome):
             writer.writerow(('download',*tuple(r)))
         for r in lake.db.execute("select dataset,key,status,error from documents where status='FAILED'"):
             writer.writerow(('document',r['dataset'],r['key'],'',r['status'],r['error']))
+    with (lake.root/'import_issues.csv').open('w',newline='',encoding='utf-8') as f:
+        writer=csv.writer(f)
+        writer.writerow(('source','member','row_number','error'))
+        writer.writerows(tuple(r) for r in lake.db.execute('select * from import_issues order by source,member,row_number'))
     return report

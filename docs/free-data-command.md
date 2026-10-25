@@ -1,6 +1,8 @@
 # One command to collect free public data
 
-From the DEEX project directory, using Python 3.10+ (3.12 recommended):
+First copy your original `data(2).zip` into the DEEX project directory. You do
+not need to extract it. Alternatively, put the extracted `data/` folder there.
+Then, using Python 3.10+ (3.12 recommended):
 
 ```powershell
 git pull --ff-only origin main
@@ -8,10 +10,58 @@ python fetch_data.py
 ```
 
 The first run installs the small pinned parser dependencies in `.venv-data` if
-needed, then starts collection. No Angel One login, paid API, database server,
+needed, then imports the existing dataset and collects missing data. No Angel One login, paid API, database server,
 Finstack installation or separate init/fetch/documents commands are required.
 An internet connection is needed for initial dependency installation and downloads.
 Use a local disk rather than OneDrive/network storage. Keep the computer awake.
+
+## Import first and fetch missing fields
+
+Default behaviour requires existing data. It auto-detects an extracted `data/`
+folder or a single `data*.zip` in the project. If several ZIPs exist it asks you
+to choose with `--existing`; if none exist it stops before downloading. An
+explicit `--fresh` permits a new full collection without previous data.
+
+For a ZIP elsewhere or data stored outside OneDrive:
+
+```powershell
+python fetch_data.py --root C:\DEEX_Data --existing "D:\Downloads\data(2).zip"
+```
+
+The selected path is remembered in that data root. Keep the source ZIP/folder
+available for future runs and XML reuse; move it with an explicit new
+`--existing` path. Repeat the same `--root` when resuming.
+
+The import phase validates CSV schemas and OHLCV rows, saves original bytes,
+imports valid prices, both index files, quarterly rows and company reference
+rows, and indexes the cached XML members. It can read XML directly from the ZIP.
+CSV checksums prevent repeated row insertion on resume. Invalid rows are listed
+in `import_issues.csv`. If a previously imported CSV changes in place, collection
+stops rather than silently retaining stale coverage; use a new data root for a
+revised dataset version.
+
+Existing OHLCV dates get `REUSED_LOCAL` price-history status. Uploaded prices stay
+in `local_prices` with their adjustment basis marked unverified; original
+financial values stay in `local_financials` with their units/timestamp semantics
+unverified. This preserves your supplied values without asserting compatibility
+with raw exchange prices or normalized point-in-time financial facts.
+
+**Some existing dates still need a bulk exchange download:** your CSVs have no
+actual rupee turnover, ISIN or series. Separate `price_supplements` jobs fetch
+those missing fields and fill absent/invalid symbol-date bars. Bulk files contain
+all stocks on a date; overlapping uploaded OHLCV is not inserted again or
+replaced. Only dates with no valid uploaded prices retain full `prices` jobs.
+Daily index files are fetched where required benchmarks/sector indices remain
+missing; imported index rows are not overwritten.
+
+Quarterly CSV rows do not establish complete issuer/date coverage or annual
+cash-flow/debt/pledge fields, so discovery still runs to find missing disclosures.
+Matching cached XML is reused before any network request. No historical
+eligibility, corporate-action adjustment or missing quality field is invented.
+
+Inspect `missing_data_plan.json` (generated offline by `--plan-only`) for imported
+counts, reused tasks and why remaining task types are necessary. This is a field-
+and date-aware acquisition plan, not a declaration of backtest completeness.
 
 ## Defaults and files
 
@@ -30,6 +80,8 @@ Everything stays under the project's Git-ignored `local_data/` folder:
 - `raw/`: SHA256-addressed original exchange responses used in catalogue receipts.
 - `response_cache/` and `http_cache.sqlite`: resumable response cache, checksums,
   original observation timestamps and persistent request/cooldown state.
+- `missing_data_plan.json`: imported coverage, reused tasks and pending task reasons.
+- `import_issues.csv`: rejected uploaded row locations; originals are preserved.
 - `progress.json`: most recently completed download-task checkpoint.
 - `coverage_report.json`: dataset counts, remaining blockers, run outcome and
   source error counts. It always retains `NOT_CERTIFIED_FOR_BACKTEST`.
@@ -40,22 +92,15 @@ plan-only or a run without reported acquisition blockers; 2 means incomplete
 coverage/configuration, 3 means source cooldown, and 130 means Ctrl+C. Processing
 all tasks does **not** mean complete historical data. The JSON report is authoritative.
 
-The existing `data/` folder from your ZIP is left untouched. If it is unpacked
-at the project root, matching XML files in `data/_cache/nse/` are reused when a
-filing discovery supplies their exact source basename. An alternate cache is:
-
-```powershell
-python fetch_data.py --reuse-cache "D:\OldData\data\_cache\nse"
-```
-
-Reuse is limited to raw XML evidence. Existing adjusted price CSVs and partial
-quarterly CSVs are not silently mixed with the new raw-price catalogue. The
-financial parser still validates company/period identity; missing metadata
-cannot be inferred from a filename.
+The original ZIP/extracted files are read-only inputs. They are never edited.
+`--reuse-cache "D:\OldData\data\_cache\nse"` can also add a loose XML directory.
+Filing metadata and the parser must still validate the original document;
+filing dates are not inferred from an XML filename.
 
 ## What runs automatically
 
-1. Plan resumable monthly filing/action/earnings jobs and daily archive jobs.
+1. Import/check existing data, then plan missing monthly disclosures, daily gaps
+   and turnover/identity supplements.
 2. Discover legacy quarterly/annual and integrated financial filings, then download and
    parse queued financial documents using DEEX's existing financial parser.
 3. Discover and parse shareholding documents (including available pledge/shares).
@@ -63,8 +108,8 @@ cannot be inferred from a filename.
 5. Collect the four required market benchmarks and all available Nifty index
    rows, including sector indices, from the same daily index file. Extra index
    rows never hide a missing required benchmark.
-6. Download daily bulk exchange bhavcopies, including rupee traded value and
-   historical symbol/ISIN/series observations. One file covers thousands of
+6. Download daily bulk exchange bhavcopies only for missing dates or missing
+   turnover/identity fields, retaining existing OHLCV. One file covers thousands of
    securities; there is no per-stock candle-download loop.
 7. Attempt modern daily REG_IND surveillance archives from 2024 onward.
 8. Collect current equity-master and Nifty 50/500 membership/industry snapshots.
@@ -80,7 +125,7 @@ complete merely because the HTTP request succeeded.
 ## Resume and retries
 
 Press Ctrl+C to stop. Run the same command to resume pending work. Successful
-jobs are skipped, downloaded response bytes are cached, and interrupted SQLite
+jobs and reused local price-history tasks are skipped, downloaded response bytes are cached, and interrupted SQLite
 transactions roll back safely. A process lock prevents two new one-command
 collectors writing the same folder; do not also run the legacy collector there.
 

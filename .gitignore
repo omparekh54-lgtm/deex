@@ -16,3 +16,6 @@ local_backups/
 snapshot/*.tmp
 .venv-data/
 data/
+
+# Original uploaded datasets are local inputs, never repository content.
+/data*.zip
