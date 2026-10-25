@@ -25,7 +25,9 @@ from .local_lake import Lake, dumps, stamp
 
 CORE_DATASETS = ('financial_discovery', 'annual_financial_discovery', 'shareholding_discovery',
                  'actions', 'earnings', 'indices', 'prices')
-DATASETS = CORE_DATASETS + ('price_supplements', 'surveillance_daily', 'current_master', 'current_nifty50', 'current_nifty500')
+DATASETS = ('indices','prices','price_supplements','surveillance_daily',
+            'actions','earnings','current_master','current_nifty50','current_nifty500',
+            'shareholding_discovery','financial_discovery','annual_financial_discovery')
 BLOCK_CODES = {401, 403, 429}
 
 
@@ -361,6 +363,8 @@ def progress(label, completed, total, outcome='', stream=None):
 
 
 def run_collection(lake, http, *, start, end, retry=False, progress_fn=progress):
+    from .collection_diagnostics import quarantine_placeholders
+    quarantine_placeholders(lake)
     plan = lake.plan_free(start, end)
     if hasattr(http, 'network') and http.network.execute(
             'select count(*) from hosts where blocked_until>?', (http.clock(),)).fetchone()[0]:
@@ -403,17 +407,7 @@ def run_collection(lake, http, *, start, end, retry=False, progress_fn=progress)
                         total=total, last_status=status, updated_at=stamp()))
             if http.paused:
                 return 'PAUSED_BY_SOURCE'
-        if dataset in ('financial_discovery','annual_financial_discovery','shareholding_discovery') and selected:
-            count = lake.db.execute("select count(*) from documents where status='PENDING'").fetchone()[0]
-            progress_fn('Discovered documents', 0, count)
-            for i in range(count):
-                status,reason,bad_run=process_document()
-                progress_fn('Discovered documents', i+1, count, status+' '+reason)
-                if http.paused:
-                    return 'PAUSED_BY_SOURCE'
-                if bad_run:
-                    return 'PAUSED_DOCUMENT_FAILURES'
-    # Also drain a queue left by an interrupted discovery/doc phase.
+    # Finish independent datasets before processing the potentially huge document queue.
     remaining=lake.db.execute("select count(*) from documents where status='PENDING'").fetchone()[0]
     for i in range(remaining):
         status,reason,bad_run=process_document()
@@ -449,7 +443,7 @@ def write_report(lake, http, outcome):
         writer.writerow(('kind','dataset','start_or_key','end','status','error'))
         for r in lake.db.execute("select dataset,start,end,status,error from jobs where status in ('FAILED','MISSING','PARTIAL')"):
             writer.writerow(('download',*tuple(r)))
-        for r in lake.db.execute("select dataset,key,status,error from documents where status='FAILED'"):
+        for r in lake.db.execute("select dataset,key,status,error from documents where status in ('FAILED','UNAVAILABLE')"):
             writer.writerow(('document',r['dataset'],r['key'],'',r['status'],r['error']))
     with (lake.root/'import_issues.csv').open('w',newline='',encoding='utf-8') as f:
         writer=csv.writer(f)

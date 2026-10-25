@@ -57,6 +57,14 @@ def allowed_url(url):
     return url
 
 
+def attachment_missing(url):
+    """NSE uses '-' in its response as a missing-file sentinel, sometimes as a URL."""
+    if not isinstance(url,str) or not url.strip():
+        return True
+    path=urllib.parse.unquote(urllib.parse.urlsplit(url.strip()).path).rstrip('/')
+    return path.rsplit('/',1)[-1].lower() in {'-', 'na', 'n/a', 'null', 'none'}
+
+
 class SafeRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         allowed_url(newurl)

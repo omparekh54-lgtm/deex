@@ -142,7 +142,9 @@ def _absolute(base: str, uri: Any) -> str | None:
     text = str(uri).strip()
     if not text or text == "-":
         return None
-    return urljoin(base, text)
+    resolved=urljoin(base,text)
+    from .cloud_sources import attachment_missing
+    return None if attachment_missing(resolved) else resolved
 
 
 def _records_from_json(payload: Any) -> list[dict[str, Any]]:
@@ -483,8 +485,17 @@ def filings_from_exchange_record(
         labels={_norm_key(x.text or '') for x in root
             if x.tag.rsplit('}',1)[-1]=='ReportingQuarter'}
         if labels and labels<={'halfyear','halfyearly','sixmonths'}:
-            record=replace(record,filing_kind='half_year',raw_payload={**record.raw_payload,
-                'source_reported_filing_kind':'half_year','exchange_summary_filing_kind':record.filing_kind})
+            # A Half-yearly label may accompany a genuine quarter plus YTD.
+            # Actual validated entity-total durations decide, not this label.
+            facts=parse_xbrl_facts(raw)
+            quarter=extract_canonical_financials(facts,record.period_end,
+                filing_kind='quarter',statement_scope=record.statement_scope)
+            half=extract_canonical_financials(facts,record.period_end,
+                filing_kind='half_year',statement_scope=record.statement_scope)
+            if ((quarter['sales'] is None or quarter['pat'] is None)
+                    and half['sales'] is not None and half['pat'] is not None):
+                record=replace(record,filing_kind='half_year',raw_payload={**record.raw_payload,
+                    'source_reported_filing_kind':'half_year','exchange_summary_filing_kind':record.filing_kind})
     primary = filing_from_exchange_record(record, xbrl)
     filings = [primary]
     if xbrl:

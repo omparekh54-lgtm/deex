@@ -64,7 +64,7 @@ def main(argv=None):
             code = 130
             try:
                 if args.probe_documents:
-                    samples=lake.db.execute("select dataset,key from documents where status='FAILED' order by key limit ?",(args.probe_documents,)).fetchall()
+                    samples=lake.db.execute("select dataset,key from documents where status in ('FAILED','UNAVAILABLE') order by key limit ?",(args.probe_documents,)).fetchall()
                     for i,sample in enumerate(samples,1):
                         result=lake.documents(limit=1,http_factory=lambda:http,job_identity=tuple(sample))
                         print(f'Sample {i}/{len(samples)}: {result}',flush=True)
@@ -97,7 +97,8 @@ def main(argv=None):
                     code = 3 if outcome.startswith('PAUSED_') else 0
                 report = write_report(lake,http,outcome)
                 if code == 0 and not args.plan_only and (report['missing_datasets'] or
-                        any(r['status'] in ('FAILED','MISSING','PARTIAL') for r in report['jobs'])):
+                        any(r['status'] in ('FAILED','MISSING','PARTIAL') for r in report['jobs']) or
+                        any(r['status']=='UNAVAILABLE' for r in report['document_jobs'])):
                     code = 2
             except KeyboardInterrupt:
                 print('\nStopped. Re-run the same command to resume.', flush=True)

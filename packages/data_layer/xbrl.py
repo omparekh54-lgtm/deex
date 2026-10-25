@@ -136,6 +136,26 @@ def _context_details(root: ET.Element) -> dict[str, dict]:
                 or (start and end and start <= end and not instant))),
             entity_identifier=identifier,
         )
+    # Do not let mislabeled YTD contexts compete with valid quarter totals.
+    # Use source reporting-date facts only as consistency checks, never as
+    # replacements for missing context definitions or guessed duration repairs.
+    reported={}
+    for node in root:
+        name=_local_name(node.tag)
+        if name not in {'DateOfStartOfReportingPeriod','DateOfEndOfReportingPeriod'}:
+            continue
+        key=node.attrib.get('contextRef')
+        reported.setdefault(key,{}).setdefault(name,set()).add(_parse_date(node.text))
+    for key,fields in reported.items():
+        if key not in contexts:
+            continue
+        context=contexts[key]
+        if context['period_start'] is None:
+            continue
+        for name,field in (('DateOfStartOfReportingPeriod','period_start'),
+                           ('DateOfEndOfReportingPeriod','period_end')):
+            if name in fields and fields[name] != {context[field]}:
+                context['context_valid']=False
     return contexts
 
 
@@ -192,7 +212,7 @@ def parse_xbrl_facts(xml: bytes | str) -> list[XbrlFact]:
     return facts
 
 
-EXTRACTION_VERSION = "FINANCIAL_XBRL_v2"
+EXTRACTION_VERSION = "FINANCIAL_XBRL_v3"
 INSTANT_FACTS = {"debt", "equity"}
 PERIOD_DAYS = {"quarter": (75, 105), "half_year": (150, 210), "nine_months": (240, 300), "annual": (330, 380)}
 

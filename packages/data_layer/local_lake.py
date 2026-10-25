@@ -367,10 +367,14 @@ class Lake:
                 url = row.get('xbrl') or row.get('xbrlFile') or row.get('xbrl_file_link')
                 if not url:
                     continue
-                allowed_url(url)
+                from .cloud_sources import attachment_missing
+                missing=attachment_missing(url)
+                if not missing:
+                    allowed_url(url)
                 key = hashlib.sha256(dumps(row).encode()).hexdigest()
-                self.db.execute('insert or ignore into documents(dataset,key,url,payload) values(?,?,?,?)',
-                                ('shareholding' if dataset == 'shareholding_discovery' else 'financials', key, url, dumps(row)))
+                self.db.execute('insert or ignore into documents(dataset,key,url,payload,status,error) values(?,?,?,?,?,?)',
+                                ('shareholding' if dataset == 'shareholding_discovery' else 'financials', key, url, dumps(row),
+                                 'UNAVAILABLE' if missing else 'PENDING','financial_attachment_missing' if missing else None))
         return 1, [digest]
 
     def _integrated_discovery(self, start, end, http):
@@ -398,15 +402,18 @@ class Lake:
                             ('financial_discovery_raw', f'{start}/{end}/{page}', start, None, dumps(payload), digest))
             for row in rows:
                 r = parser._parse_row(row)
-                if not r or not r.external_id or not r.xbrl_uri or not start <= str(r.filed_at.date()) <= end:
+                if not r or not r.external_id or not start <= str(r.filed_at.date()) <= end:
                     raise SourceError('financial_identity_or_date_filter_failed')
                 key = f'{r.symbol}/{r.external_id}'
                 if key in seen:
                     raise SourceError('financial_repeated_page')
                 seen.add(key)
-                allowed_url(r.xbrl_uri)
-                self.db.execute('insert or ignore into documents(dataset,key,url,payload) values(?,?,?,?)',
-                                ('financials', hashlib.sha256(dumps(row).encode()).hexdigest(), r.xbrl_uri, dumps(row)))
+                missing=r.xbrl_uri is None
+                if not missing:
+                    allowed_url(r.xbrl_uri)
+                self.db.execute('insert or ignore into documents(dataset,key,url,payload,status,error) values(?,?,?,?,?,?)',
+                                ('financials',hashlib.sha256(dumps(row).encode()).hexdigest(),r.xbrl_uri or '-',dumps(row),
+                                 'UNAVAILABLE' if missing else 'PENDING','financial_attachment_missing' if missing else None))
                 count += 1
             if count == expected:
                 return count, receipts
@@ -422,7 +429,12 @@ class Lake:
         from .cloud_sources import parse_shareholding
         from .exchange_financials import NSEIntegratedFinancialsProvider, filings_from_exchange_record
         provider = object.__new__(NSEIntegratedFinancialsProvider)
-        condition = "status='PENDING'" if pending_only else "status!='DONE'"
+        from .collection_diagnostics import quarantine_placeholders
+        quarantine_placeholders(self)
+        self.db.execute('create index if not exists documents_status on documents(status,dataset,key)')
+        condition = "status='PENDING'" if pending_only else "status in ('PENDING','FAILED')"
+        if job_identity is not None:
+            condition="status!='DONE'"
         params=[]
         if job_identity is not None:
             condition += " and dataset=? and key=?"
@@ -432,6 +444,9 @@ class Lake:
         for job in jobs:
             doc = None
             try:
+                from .cloud_sources import attachment_missing
+                if attachment_missing(job['url']):
+                    raise SourceError('financial_attachment_missing')
                 raw = json.loads(job['payload'])
                 record = provider._parse_row(raw) if job['dataset']=='financials' else None
                 if job['dataset']=='financials' and record is None:
@@ -445,7 +460,7 @@ class Lake:
                     if record is None:
                         raise SourceError('financial_identity_missing')
                     values = [asdict(f) for f in filings_from_exchange_record(record, doc.body)]
-                    if not values or any(v['sales'] is None or v['pat'] is None for v in values):
+                    if not values or values[0]['sales'] is None or values[0]['pat'] is None:
                         from .xbrl import parse_xbrl_facts
                         facts=parse_xbrl_facts(doc.body)
                         if any(not f.context_valid for f in facts):
@@ -466,12 +481,13 @@ class Lake:
                                     (job['dataset'], job['key']))
                 results.append(dict(dataset=job['dataset'], status='DONE', rows=len(pairs)))
             except Exception as exc:
-                from .collection_diagnostics import ERROR_SCHEMA, document_error
+                from .collection_diagnostics import ERROR_SCHEMA, EXPECTED_GAPS, document_error
                 code,error_type,frames=document_error(exc)
+                status='UNAVAILABLE' if code in EXPECTED_GAPS else 'FAILED'
                 self.db.executescript(ERROR_SCHEMA)
                 with self.db:
-                    self.db.execute("update documents set status='FAILED',error=? where dataset=? and key=?",
-                                    (code,job['dataset'], job['key']))
+                    self.db.execute("update documents set status=?,error=? where dataset=? and key=?",
+                                    (status,code,job['dataset'], job['key']))
                     self.db.execute('insert or replace into document_errors values(?,?,?,?,?,?)',
                                     (job['dataset'],job['key'],code,error_type,stamp(),dumps(frames)))
                     if doc is not None:
@@ -479,7 +495,7 @@ class Lake:
                         self.db.execute('insert or ignore into records values(?,?,?,?,?,?)',
                                         (job['dataset']+'_unparsed_raw',job['key'],None,None,
                                          dumps({'error':code,'original_metadata':raw}),receipt))
-                results.append(dict(dataset=job['dataset'], status='FAILED', error=code))
+                results.append(dict(dataset=job['dataset'], status=status, error=code))
         return results
 
     def fetch(self, *, datasets=('prices', 'indices'), limit=100, retry=False,

@@ -207,3 +207,40 @@ class names, source-code frame locations, source URLs without query strings and
 selected filing metadata. Response bodies and exception messages are not exported.
 Historical generic errors stay generic until sampled; the original report alone
 cannot identify their root cause. Review the detailed sample before a full retry.
+
+## Repairing the reported legacy failures
+
+Missing NSE attachment sentinels such as `/corporate/xbrl/-` are now marked
+`UNAVAILABLE` without a request. Existing queued sentinel rows are migrated in
+place without deletion. Actual document 404s and unavailable core facts/contexts
+are also reported as source gaps (`UNAVAILABLE`), separate from unexpected
+transport/parser failures (`FAILED`). Neither status counts as successful
+financial normalization or a complete backtest dataset. Gaps stay in
+`failed_tasks.csv`, `document_diagnostics.json` and the coverage report.
+
+A source `Half yearly` label no longer overrides an actual valid quarter merely
+because that label exists. Quarter versus half-year selection uses validated
+entity-total durations. If a context's declared dates contradict the reporting-
+period facts for that same context, it is excluded; its dates are not repaired
+or guessed. A missing context is never manufactured from reporting-date text.
+This prevents mismarked cumulative totals from competing with an otherwise
+valid quarter, while unexplained conflicting totals still remain unavailable.
+The extraction version is now `FINANCIAL_XBRL_v3`.
+
+Independent price/index/reference discovery runs before the document queue, so
+unsupported financial attachments cannot starve the other downloads. The five-
+consecutive-failure circuit still applies to unexpected failures, and HTTP
+access-denied/rate-limit responses still stop the run immediately. Known source
+gaps do not trigger that circuit or get automatically retried by `--retry`.
+Explicit bounded probes can inspect `FAILED` or `UNAVAILABLE` records.
+
+To resume after installing the repair:
+
+```powershell
+git pull --ff-only origin main
+python fetch_data.py --root C:\DEEX_Data --retry
+```
+
+Existing imports, cached source bytes and successful jobs are retained. Source
+gaps still mean the final dataset is incomplete; completion of available free
+collection must not be represented as exact full-strategy acceptance.
