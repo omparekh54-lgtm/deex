@@ -173,3 +173,37 @@ staged using the existing `scripts/collect_local_data.py import` command.
 A completed free collection is an acquisition/staging database. It does not
 certify an exact full-strategy backtest or replace the existing PostgreSQL PMS
 replay schema. Corporate-action adjustment and coverage audits remain required.
+
+## Investigating document failures
+
+A full collector now pauses after five consecutive failed documents, or 15
+failures in the last 20 attempts. This is a parser/source failure circuit,
+separate from the HTTP rate-limit cooldown. The report uses
+`PAUSED_DOCUMENT_FAILURES`; it is not a successful acquisition state.
+
+The parser recognises legacy NSE `toDate` period ends and `seqNumber` filing IDs,
+and treats `Non-Consolidated` as standalone. These metadata corrections do not
+reconstruct missing XBRL contexts or turn unsupported financial values into zeros.
+Some legacy exchange XML renditions reference contexts they do not define.
+Those files remain blocked with a specific error; their original bytes are
+retained under an unparsed-raw record, outside normalized financial facts.
+
+For an offline metadata report without fetching, importing or retrying:
+
+```powershell
+python fetch_data.py --root C:\DEEX_Data --diagnose
+```
+
+To retry only a bounded sample of previously failed documents (1 to 20), then stop:
+
+```powershell
+python fetch_data.py --root C:\DEEX_Data --probe-documents 10
+```
+
+The sample command never starts the full download queue and does not retry
+successful records. Normal pacing, original cache reuse and HTTP cooldowns still
+apply. It writes `document_diagnostics.json`, showing exact error codes, exception
+class names, source-code frame locations, source URLs without query strings and
+selected filing metadata. Response bodies and exception messages are not exported.
+Historical generic errors stay generic until sampled; the original report alone
+cannot identify their root cause. Review the detailed sample before a full retry.

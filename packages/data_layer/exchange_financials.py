@@ -111,11 +111,14 @@ def _parse_date(value: Any) -> date | None:
 
 def _scope(value: Any) -> str:
     text = str(value or "Standalone").strip().lower()
-    return "consolidated" if "consol" in text else "standalone"
+    label = _norm_key(text)
+    if label in {"nonconsolidated", "nonconsol", "standalone", "s", "n"}:
+        return "standalone"
+    return "consolidated" if label in {"consolidated", "consol", "c", "y"} else "standalone"
 
 
 def _filing_kind(row: dict[str, Any]) -> str:
-    value = _pick(row, "filing_kind", "filingKind", "periodType", "typeOfResult", "resultType", "period_type")
+    value = _pick(row, "filing_kind", "filingKind", "periodType", "typeOfResult", "resultType", "period_type", "period")
     label = _norm_key(str(value or "quarter"))
     if label in {"annual", "annually", "year", "yearly", "fullyear", "yearended", "financialyear"}:
         return "annual"
@@ -229,7 +232,7 @@ class NSEIntegratedFinancialsProvider:
 
     def _parse_row(self, row: dict[str, Any]) -> ExchangeFilingRecord | None:
         symbol = _pick(row, "symbol", "sm_symbol", "securitySymbol")
-        period_end = _parse_date(_pick(row, "quarterEndDate", "quarter_end_date", "periodEnded", "period_end", "qe_Date"))
+        period_end = _parse_date(_pick(row, "quarterEndDate", "quarter_end_date", "periodEnded", "period_end", "qe_Date", "toDate"))
         filed_at = _parse_datetime(
             _pick(row, "broadcastDateTime", "broadcast_date_time", "sort_date", "filingDateTime", "exchdisstime", "broadcast_Date", "revised_Date", "creation_Date")
         )
@@ -258,7 +261,7 @@ class NSEIntegratedFinancialsProvider:
             revision_remarks=_pick(row, "revisionRemarks", "revision_remarks", "remarks", "revision_Remark"),
             exchange_received_at=_parse_datetime(_pick(row, "exchangeReceivedTime", "exchange_received_time")),
             exchange_disseminated_at=_parse_datetime(_pick(row, "exchangeDisseminationTime", "exchange_dissemination_time", "creation_Date")),
-            external_id=str(_pick(row, "id", "filingId", "seqId", "sequenceNo") or "") or None,
+            external_id=str(_pick(row, "id", "filingId", "seqId", "sequenceNo", "seqNumber") or "") or None,
             details_uri=_absolute(self.BASE_URL, _pick(row, "details", "detailsLink", "attachment", "attchmntFile")),
             xbrl_uri=_absolute(self.BASE_URL, _pick(row, "xbrl", "xbrlLink", "xbrlFile", "xbrl_file_link")),
             filing_kind=_filing_kind(row),

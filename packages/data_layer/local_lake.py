@@ -414,7 +414,7 @@ class Lake:
                 raise SourceError('financial_pagination_truncated')
         raise SourceError('financial_page_budget_exceeded')
 
-    def documents(self, *, limit=100, http_factory=None, pending_only=False):
+    def documents(self, *, limit=100, http_factory=None, pending_only=False, job_identity=None):
         """Process original XBRL; errors are retained for review, never zero-filled."""
         if not 1 <= limit <= 10000:
             raise ValueError('limit must be 1..10000')
@@ -423,13 +423,21 @@ class Lake:
         from .exchange_financials import NSEIntegratedFinancialsProvider, filings_from_exchange_record
         provider = object.__new__(NSEIntegratedFinancialsProvider)
         condition = "status='PENDING'" if pending_only else "status!='DONE'"
-        jobs = self.db.execute("select * from documents where " + condition + " order by dataset,key limit ?", (limit,)).fetchall()
+        params=[]
+        if job_identity is not None:
+            condition += " and dataset=? and key=?"
+            params.extend(job_identity)
+        jobs = self.db.execute("select * from documents where " + condition + " order by dataset,key limit ?", (*params,limit)).fetchall()
         results = []
         for job in jobs:
+            doc = None
             try:
+                raw = json.loads(job['payload'])
+                record = provider._parse_row(raw) if job['dataset']=='financials' else None
+                if job['dataset']=='financials' and record is None:
+                    raise SourceError('financial_identity_missing')
                 http = http_factory() if http_factory else OfficialHTTP(seconds=90)
                 doc = http.fetch(job['url'])
-                raw = json.loads(job['payload'])
                 if b'<!DOCTYPE' in doc.body.upper() or b'<!ENTITY' in doc.body.upper():
                     raise SourceError('xbrl_entities_forbidden')
                 if job['dataset'] == 'financials':
@@ -438,6 +446,10 @@ class Lake:
                         raise SourceError('financial_identity_missing')
                     values = [asdict(f) for f in filings_from_exchange_record(record, doc.body)]
                     if not values or any(v['sales'] is None or v['pat'] is None for v in values):
+                        from .xbrl import parse_xbrl_facts
+                        facts=parse_xbrl_facts(doc.body)
+                        if any(not f.context_valid for f in facts):
+                            raise SourceError('financial_core_facts_or_contexts_missing')
                         raise SourceError('financial_core_facts_missing')
                     pairs = [(str(v['period_end']), v['filed_at'].replace(tzinfo=__import__('zoneinfo').ZoneInfo('Asia/Kolkata')).isoformat(), v) for v in values]
                 else:
@@ -453,11 +465,21 @@ class Lake:
                     self.db.execute('update documents set status=\'DONE\',error=NULL where dataset=? and key=?',
                                     (job['dataset'], job['key']))
                 results.append(dict(dataset=job['dataset'], status='DONE', rows=len(pairs)))
-            except Exception:
+            except Exception as exc:
+                from .collection_diagnostics import ERROR_SCHEMA, document_error
+                code,error_type,frames=document_error(exc)
+                self.db.executescript(ERROR_SCHEMA)
                 with self.db:
-                    self.db.execute("update documents set status='FAILED',error='document_parse_or_fetch_failed' where dataset=? and key=?",
-                                    (job['dataset'], job['key']))
-                results.append(dict(dataset=job['dataset'], status='FAILED', error='document_parse_or_fetch_failed'))
+                    self.db.execute("update documents set status='FAILED',error=? where dataset=? and key=?",
+                                    (code,job['dataset'], job['key']))
+                    self.db.execute('insert or replace into document_errors values(?,?,?,?,?,?)',
+                                    (job['dataset'],job['key'],code,error_type,stamp(),dumps(frames)))
+                    if doc is not None:
+                        receipt=self.archive(doc)
+                        self.db.execute('insert or ignore into records values(?,?,?,?,?,?)',
+                                        (job['dataset']+'_unparsed_raw',job['key'],None,None,
+                                         dumps({'error':code,'original_metadata':raw}),receipt))
+                results.append(dict(dataset=job['dataset'], status='FAILED', error=code))
         return results
 
     def fetch(self, *, datasets=('prices', 'indices'), limit=100, retry=False,

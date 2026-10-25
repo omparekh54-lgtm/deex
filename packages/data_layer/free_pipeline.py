@@ -381,6 +381,15 @@ def run_collection(lake, http, *, start, end, retry=False, progress_fn=progress)
     todo = [r for r in todo if r['dataset'] in DATASETS]
     total, processed = len(todo), 0
     progress_fn('Download tasks', 0, total, 'processed is not successful coverage')
+    failures = []
+    def process_document():
+        out=lake.documents(limit=1,http_factory=lambda: http,pending_only=True)
+        status=out[0]['status'] if out else 'SKIPPED'
+        reason=out[0].get('error','') if out else ''
+        failures.append(status=='FAILED')
+        del failures[:-20]
+        bad_run=(len(failures)>=5 and all(failures[-5:])) or (len(failures)>=20 and sum(failures)>=15)
+        return status,reason,bad_run
     for dataset in DATASETS:
         selected = [r for r in todo if r['dataset'] == dataset]
         for r in selected:
@@ -398,15 +407,21 @@ def run_collection(lake, http, *, start, end, retry=False, progress_fn=progress)
             count = lake.db.execute("select count(*) from documents where status='PENDING'").fetchone()[0]
             progress_fn('Discovered documents', 0, count)
             for i in range(count):
-                out = lake.documents(limit=1, http_factory=lambda: http, pending_only=True)
-                progress_fn('Discovered documents', i+1, count, out[0]['status'] if out else 'SKIPPED')
+                status,reason,bad_run=process_document()
+                progress_fn('Discovered documents', i+1, count, status+' '+reason)
                 if http.paused:
                     return 'PAUSED_BY_SOURCE'
+                if bad_run:
+                    return 'PAUSED_DOCUMENT_FAILURES'
     # Also drain a queue left by an interrupted discovery/doc phase.
-    while lake.db.execute("select count(*) from documents where status='PENDING'").fetchone()[0]:
-        lake.documents(limit=1, http_factory=lambda: http, pending_only=True)
+    remaining=lake.db.execute("select count(*) from documents where status='PENDING'").fetchone()[0]
+    for i in range(remaining):
+        status,reason,bad_run=process_document()
+        progress_fn('Remaining documents',i+1,remaining,status+' '+reason)
         if http.paused:
             return 'PAUSED_BY_SOURCE'
+        if bad_run:
+            return 'PAUSED_DOCUMENT_FAILURES'
     return 'WORK_QUEUE_PROCESSED'
 
 
@@ -426,6 +441,8 @@ def write_report(lake, http, outcome):
                       'Legacy listing pagination, dates, financial periods, revisions and original publication times require coverage audit.',
                       'Uploaded OHLCV is preserved separately with unverified adjustment basis; raw exchange rows supplement missing values without overwriting originals.',
                       'This SQLite acquisition lake does not replace the PostgreSQL PMS replay database.'])
+    from .collection_diagnostics import diagnose
+    atomic_json(lake.root/'document_diagnostics.json',diagnose(lake))
     atomic_json(lake.root/'coverage_report.json', report)
     with (lake.root/'failed_tasks.csv').open('w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)

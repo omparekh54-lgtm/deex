@@ -40,6 +40,8 @@ def main(argv=None):
     parser.add_argument('--start', type=date.fromisoformat, help='Study start; default ten years before end')
     parser.add_argument('--end', type=date.fromisoformat, help='Study end; default yesterday in India')
     parser.add_argument('--retry', action='store_true', help='Retry previous failed/missing/partial jobs once this run')
+    parser.add_argument('--probe-documents',type=int,choices=range(1,21),metavar='1..20',help='Retry only this many failed document samples, then stop')
+    parser.add_argument('--diagnose',action='store_true',help='Export document failure metadata offline; do not import, fetch or retry')
     parser.add_argument('--plan-only', action='store_true', help='Plan and report without network access')
     parser.add_argument('--interval', type=float, default=1.5, help='Minimum seconds per request; minimum 1.0')
     parser.add_argument('--reuse-cache', type=Path, action='append', default=[], help='Existing NSE XML cache directory')
@@ -61,6 +63,26 @@ def main(argv=None):
             outcome = 'INTERRUPTED'
             code = 130
             try:
+                if args.probe_documents:
+                    samples=lake.db.execute("select dataset,key from documents where status='FAILED' order by key limit ?",(args.probe_documents,)).fetchall()
+                    for i,sample in enumerate(samples,1):
+                        result=lake.documents(limit=1,http_factory=lambda:http,job_identity=tuple(sample))
+                        print(f'Sample {i}/{len(samples)}: {result}',flush=True)
+                        if http.paused:
+                            break
+                    outcome,code='DOCUMENT_PROBE_ONLY',0
+                    print('Sample finished. No full queue was started. See document_diagnostics.json.')
+                    return code
+                if args.diagnose:
+                    from packages.data_layer.collection_diagnostics import diagnose
+                    from packages.data_layer.free_pipeline import atomic_json
+                    details=diagnose(lake)
+                    atomic_json(args.root/'document_diagnostics.json',details)
+                    print('Offline diagnostics: '+str(args.root.resolve()/'document_diagnostics.json'))
+                    for sample in details['failed_samples'][:5]:
+                        print(sample['error'],sample['error_type'],sample['filing_metadata'])
+                    outcome,code='DIAGNOSTICS_ONLY',0
+                    return code
                 sources = find_sources(lake,ROOT,args.existing,fresh=args.fresh)
                 for source in sources:
                     print(f'Inspecting existing dataset: {source}',flush=True)
@@ -72,7 +94,7 @@ def main(argv=None):
                     print(f'Collecting free sources for {start} to {end}, plus warm-up history.', flush=True)
                     print('Progress measures processed tasks, including missing/failed tasks. Ctrl+C safely stops.', flush=True)
                     outcome = run_collection(lake,http,start=start,end=end,retry=args.retry)
-                    code = 3 if outcome == 'PAUSED_BY_SOURCE' else 0
+                    code = 3 if outcome.startswith('PAUSED_') else 0
                 report = write_report(lake,http,outcome)
                 if code == 0 and not args.plan_only and (report['missing_datasets'] or
                         any(r['status'] in ('FAILED','MISSING','PARTIAL') for r in report['jobs'])):
@@ -86,6 +108,8 @@ def main(argv=None):
                 write_report(lake,http,outcome)
                 http.close(); lake.close()
             print(f'{outcome}. Report: {args.root.resolve()/"coverage_report.json"}', flush=True)
+            if outcome == 'PAUSED_DOCUMENT_FAILURES':
+                print('Document failures exceeded the safety threshold. Inspect document_diagnostics.json before retrying.')
             if outcome == 'PAUSED_BY_SOURCE':
                 print('Source requested a pause. Cooldown is saved; wait before rerunning. No block bypass is attempted.')
             return code
